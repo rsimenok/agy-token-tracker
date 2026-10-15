@@ -1,103 +1,145 @@
 # AGY Token Tracker (Antigravity Unified Menu Bar Monitor) ⚡️
 
-Нативний macOS додаток для статус-бару (Menu Bar), аналогічний до Syrtis / TokenBar, спеціально розроблений для моніторингу використання токенів та витрат в усій екосистемі **Antigravity**:
-1. **Antigravity 2.0 (Desktop)**
-2. **Antigravity CLI (`agy`)**
-3. **Antigravity IDE (VS Code Extension / LS)**
+[![macOS 14.0+](https://img.shields.io/badge/macOS-14.0%2B-blue.svg)](https://apple.com)
+[![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
+**AGY Token Tracker** is a lightweight, native macOS menu bar application designed to monitor token usage, prompt caching efficiency, real-time expenses, and rate limit quotas across the entire **Google Antigravity** ecosystem:
+
+1. 🖥️ **Antigravity 2.0 (Desktop)**
+2. 💻 **Antigravity CLI (`agy`)**
+3. 📝 **Antigravity IDE (VS Code Extension & Language Server)**
+
+Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthetic, it lives quietly in your menu bar (`LSUIElement`, no Dock icon clutter) and updates automatically in the background.
 
 ---
 
-## 🚀 Можливості (Features)
+## ✨ Features
 
-- **Нативний macOS інтерфейс (SwiftUI & AppKit)**: Легкий, швидкий додаток для меню-бару з дизайном Liquid Glass (без іконки в Dock, працює виключно в статус-барі).
-- **Мульти-додатковий трекінг (Unified & Filterable)**:
-  - 🌐 **All (Unified)**: Загальний підсумок по всій екосистемі з інтерактивними картками розбивки по кожному додатку.
-  - 🖥️ **2.0 (Desktop)**: Відстеження окремо для десктопного Antigravity 2.0 (`~/.gemini/antigravity/brain/**/transcript.jsonl`).
-  - 💻 **CLI (`agy`)**: Відстеження консольних сесій CLI (`~/.gemini/antigravity-cli`).
-  - 📝 **IDE**: Відстеження IDE розширень (`~/.gemini/antigravity-ide/conversations/*.db` та `brain`).
-- **Гнучкі часові періоди**:
-  - **Сьогодні (Today)**
-  - **Вчора (Yesterday)**
-  - **Цього тижня (This Week)**
-  - **Цього місяця (This Month)**
-  - **За весь час (All Time)**
-- **Детальна розбивка токенів**:
-  - 📥 **Input Tokens**: свіжий контекст та запити користувача.
-  - ⚡️ **Cache Read Tokens**: кешований контекст (Context Caching) з відображенням економії (~75%).
-  - 📤 **Output Tokens**: згенерований текст та reasoning/thinking токени.
-  - 🎯 **Cache Efficiency**: коефіцієнт попадання в кеш (Cache Hit Ratio %).
-- **Розрахунок вартості ($ USD)**:
-  - Автоматичне завантаження актуальних тарифів з відкритої бази **LiteLLM** (`model_prices_and_context_window.json`).
-  - Вбудована офлайн-таблиця для сімейства **Gemini 3.8/2.5/2.0/1.5 Flash**, **Gemini Pro** та **Claude**.
-- **Двошаровий парсер (JSONL + SQLite Protobuf)**:
-  - Потоковий JSONL аналізатор для швидкого читання траєкторій планувальника.
-  - Вбудований нативний SQLite та легковий декодер wire-формату Google Protobuf (`gen_metadata`) без зовнішніх C++ бібліотек.
-- **Live File Watcher**: Миттєве реактивне оновлення лічильників при генерації нових токенів у розмовах Desktop, CLI або IDE.
-- **Історія сесій**: Список останніх розмов із кольоровими бейджами додатку (`[2.0]`, `[CLI]`, `[IDE]`), таймстемпами, моделями, кількістю кроків та вартістю.
-- **Налаштування**: Статус моніторингу шляхів усіх трьох середовищ, швидкий перехід у Finder, вибір формату в меню-барі (Токени, Вартість або тільки іконка), ручна синхронізація тарифів.
+### 🌐 Multi-Surface Unified Tracking
+- **Unified Overview (All Surfaces)**: Global metrics with interactive breakdown cards summarizing each environment at a glance.
+- **Antigravity 2.0 (Desktop)**: Monitors session trajectories from `~/.gemini/antigravity/brain/**/transcript.jsonl`.
+- **Antigravity CLI (`agy`)**: Scans console sessions and trajectory databases from `~/.gemini/antigravity-cli`.
+- **Antigravity IDE**: Parses IDE extensions and workspace conversations from `~/.gemini/antigravity-ide`.
+
+### ⏱️ Flexible Time Horizons
+- **Today**
+- **Yesterday**
+- **This Week**
+- **This Month**
+- **All Time**
+
+### 📊 Granular Token & Cache Accounting
+- 📥 **Input Tokens**: Fresh context and user prompts.
+- ⚡️ **Cache Read Tokens**: Cached context (Prompt Caching) taking advantage of standard ~75–80% cost savings.
+- 📤 **Output Tokens**: Model responses including reasoning / thinking tokens.
+- 🎯 **Cache Efficiency**: Real-time Cache Hit Ratio (%) to evaluate context optimization.
+
+### 💳 Real-Time Cost Estimation ($ USD)
+- **Dynamic Pricing Engine**: Automatically downloads and caches the latest model pricing from the open [LiteLLM catalog](https://github.com/BerriAI/litellm) (`model_prices_and_context_window.json`).
+- **Comprehensive Offline Fallbacks**: Built-in pricing tables covering the entire **Gemini 3.8/2.5/2.0/1.5** family (Flash, Pro, Flash-Lite), **Claude 3.7 / 3.5**, and other major models.
+
+### ⏱️ Live Quotas & Limits Monitoring
+- **Real-time Quota Fetching**: Queries `agy --print /usage --output-format json` asynchronously with safe fallback parsing.
+- **Visual Limit Gauges**: Tracks remaining quota fractions across rolling windows (e.g., Weekly limits, 5-hour rolling windows).
+- **Reset Timestamps & Countdowns**: Displays exact reset dates and formatted countdowns.
+- **Resilient Local Caching**: Persists last-known quota state in `UserDefaults` so the UI remains instantaneous on launch.
+
+### 🤖 Models Analytics & Interactive Filtering
+- 📊 **Model Distribution Bar**: Proportional color-coded indicator (similar to GitHub's language bar) with interactive chips.
+- 🔍 **Interactive Filtering**: Click any model chip or card to instantly filter recent sessions to that specific model; clear filters with a single click.
+- 📑 **Sessions / Models Toggle**: Effortlessly switch between chronological conversation history and per-model consumption summaries.
+
+### ⚡️ Dual-Layer High-Performance Parsing
+- **Streaming JSONL Parser**: Reads desktop planner trajectories incrementally without memory spikes.
+- **Zero-Dependency SQLite & Protobuf Decoder**: Inspects CLI and IDE SQLite databases and directly decodes wire-format Google Protobuf blobs (`gen_metadata`) without external C++ libraries.
+- **Filesystem Observers (FSEvents)**: Instantly invalidates and updates caches when conversation files change, using file modification times (`mtime`) to avoid redundant re-parsing.
+
+### ⚙️ Menu Bar Customization & Settings
+- **Status Bar Display Options**: Show estimated Cost (`$0.24`), Token count (`125k`), combined, or Icon only.
+- **Path Health Indicators**: Live status indicators for all monitored directories with direct "Reveal in Finder" actions.
+- **Custom Path Overrides**: Option to configure a custom Antigravity `brain` directory.
+- **Manual Pricing Sync**: One-click update for LiteLLM tariff rates.
 
 ---
 
-## 🛠 Збірка та запуск (Build & Run)
+## 🛠️ Build & Installation
 
-### Системні вимоги:
-- macOS 14.0 (Sonoma) або новіша (Apple Silicon & Intel).
-- Xcode 16+ або встановлені Command Line Tools (`swift`).
+### Requirements
+- macOS 14.0 (Sonoma) or newer (Apple Silicon & Intel).
+- Xcode 15+ or Command Line Tools (`swift`).
 
-### 1. Швидкий запуск у режимі розробки:
+### 1. Run in Development Mode
+Clone the repository and launch directly:
 ```bash
+git clone https://github.com/rsimenok/agy-token-traker.git
+cd agy-token-traker
 swift run
 ```
 
-### 2. Запуск тестів:
+### 2. Run Test Suite
 ```bash
 swift test
 ```
 
-### 3. Створення готового macOS `.app` бандла:
+### 3. Build Standalone `.app` Bundle
+Use the included build script to package a production `.app`:
 ```bash
 ./scripts/build_app.sh
 ```
-Після виконання скрипта готовий додаток буде збережено в `build/AGYTokenTracker.app`. Ви можете запустити його:
+The output bundle will be located at `build/AGYTokenTracker.app`.
+
+Launch it immediately:
 ```bash
 open build/AGYTokenTracker.app
 ```
-або скопіювати у папку програм:
+Or copy it to your Applications folder:
 ```bash
 cp -r build/AGYTokenTracker.app /Applications/
 ```
 
 ---
 
-## 📂 Архітектура проекту
+## 📂 Project Architecture
 
 ```text
 Sources/AGYTokenTracker/
-├── AGYTokenTracker.swift              # Точка входу (@main) з MenuBarExtra (.window)
+├── AGYTokenTracker.swift              # App entry point (@main) with MenuBarExtra (.window)
 ├── Models/
-│   ├── AppSurface.swift               # Перелік поверхонь (.all, .desktop, .cli, .ide)
-│   ├── TokenStep.swift                # Модель окремого кроку та SessionSummary
-│   ├── TimePeriod.swift               # Логіка фільтрації за часом
-│   └── ModelPricing.swift             # Розрахунок тарифів і вартості
+│   ├── AppSurface.swift               # Surface definitions (.all, .desktop, .cli, .ide)
+│   ├── TokenStep.swift                # Individual step metrics & SessionSummary
+│   ├── TimePeriod.swift               # Date-range filtering logic
+│   ├── ModelPricing.swift             # Model pricing rules & currency calculations
+│   ├── ModelQuota.swift               # Quota groups, buckets, and reset timestamps
+│   └── ModelUsage.swift               # Aggregated per-model statistics & color palette
 ├── Services/
-│   ├── UnifiedScanner.swift           # Головний координатор збору даних з усіх середовищ
-│   ├── TranscriptScanner.swift        # Сканування та парсинг transcript.jsonl
-│   ├── SQLiteConversationScanner.swift# SQLite + Protobuf парсер для CLI та IDE баз даних
-│   ├── PricingService.swift           # Синхронізація з LiteLLM + офлайн-тарифи
-│   └── FolderWatcher.swift            # FSEvents / DispatchSource мульти-директорійний спостерігач
+│   ├── UnifiedScanner.swift           # Central coordinator aggregating all surfaces
+│   ├── TranscriptScanner.swift        # Streaming parser for desktop transcript.jsonl
+│   ├── SQLiteConversationScanner.swift# SQLite + wire-format Protobuf decoder for CLI & IDE
+│   ├── QuotaService.swift             # Live /usage quota discovery, parsing, and caching
+│   ├── PricingService.swift           # LiteLLM catalog sync + built-in fallback tariffs
+│   └── FolderWatcher.swift            # FSEvents & DispatchSource multi-directory observer
 ├── ViewModels/
-│   └── TrackerViewModel.swift         # Головна ViewModel стану додатку
+│   └── TrackerViewModel.swift         # Observable coordinator managing state & filtering
 └── Views/
-    ├── StatusItemLabel.swift          # Відображення іконки та тексту в статус-барі
-    ├── DashboardView.swift            # Головне поповер-вікно дашборду з розбивкою по додатках
-    ├── HeroStatsCard.swift            # Картка загальних токенів та вартості
-    ├── MetricCardView.swift           # 2x2 картки метрик (Input/Cache/Output/Eff)
-    ├── SessionRowView.swift           # Елемент списку розмов із бейджами поверхонь
-    └── SettingsSheet.swift            # Вікно налаштувань та перегляду статусів директорій
+    ├── StatusItemLabel.swift          # Menu bar icon & dynamic label formatting
+    ├── DashboardView.swift            # Main popover UI with period & surface tabs
+    ├── HeroStatsCard.swift            # Primary summary card for total tokens & cost
+    ├── MetricCardView.swift           # 2x2 grid for Input / Cache / Output / Efficiency
+    ├── ModelUsageRowView.swift        # Model cards & proportional distribution bar
+    ├── SessionRowView.swift           # Session list item with colored surface badges
+    └── SettingsSheet.swift            # Preferences sheet, directory status & sync
 ```
 
 ---
 
-## 📄 Ліцензія
+## 🤝 Contributing
 
-MIT License.
+Contributions, issue reports, and feature suggestions are welcome!
+Feel free to open an issue or submit a Pull Request on [GitHub](https://github.com/rsimenok/agy-token-traker).
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -8,7 +8,9 @@ public struct TokenStep: Identifiable, Sendable {
     public let inputTokens: Int
     public let cacheReadTokens: Int
     public let outputTokens: Int
+    public let cost: Double
     public let modelName: String?
+    public let canonicalModelId: String
     public let surface: AppSurface
 
     public var totalTokens: Int {
@@ -26,7 +28,9 @@ public struct TokenStep: Identifiable, Sendable {
         inputTokens: Int,
         cacheReadTokens: Int,
         outputTokens: Int,
+        cost: Double = 0.0,
         modelName: String? = nil,
+        canonicalModelId: String? = nil,
         surface: AppSurface = .desktop
     ) {
         self.id = "\(surface.rawValue):\(sessionId):\(stepIndex)"
@@ -36,7 +40,9 @@ public struct TokenStep: Identifiable, Sendable {
         self.inputTokens = inputTokens
         self.cacheReadTokens = cacheReadTokens
         self.outputTokens = outputTokens
+        self.cost = cost
         self.modelName = modelName
+        self.canonicalModelId = canonicalModelId ?? ModelFormatter.canonicalId(for: modelName)
         self.surface = surface
     }
 }

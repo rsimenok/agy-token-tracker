@@ -76,7 +76,7 @@ public final class TranscriptScanner: @unchecked Sendable {
                 let totalInput = sessionSteps.reduce(0) { $0 + $1.inputTokens }
                 let totalCache = sessionSteps.reduce(0) { $0 + $1.cacheReadTokens }
                 let totalOutput = sessionSteps.reduce(0) { $0 + $1.outputTokens }
-                let detectedModel = sessionSteps.compactMap(\.modelName).first
+                let detectedModel = sessionSteps.compactMap(\.modelName).last ?? sessionSteps.compactMap(\.modelName).first
 
                 let rate = PricingService.shared.rateFor(modelName: detectedModel)
                 let cost = rate.calculateCost(input: totalInput, cacheRead: totalCache, output: totalOutput)
@@ -149,7 +149,7 @@ public final class TranscriptScanner: @unchecked Sendable {
             guard !trimmed.isEmpty else { return }
 
             let hasPlanner = trimmed.contains("\"PLANNER_RESPONSE\"")
-            let hasModel = trimmed.contains("Model Selection")
+            let hasModel = trimmed.contains("<USER_SETTINGS_CHANGE>") && trimmed.contains("Model Selection")
             guard hasPlanner || hasModel else { return }
 
             guard let jsonData = trimmed.data(using: .utf8),
@@ -157,7 +157,9 @@ public final class TranscriptScanner: @unchecked Sendable {
                 return
             }
 
-            if hasModel, let userSettings = obj["content"] as? String, userSettings.contains("Model Selection") {
+            if hasModel,
+               let type = obj["type"] as? String, type == "USER_INPUT",
+               let userSettings = obj["content"] as? String {
                 if let match = self.extractModelFromContent(userSettings) {
                     currentSessionModel = match
                 }
@@ -180,6 +182,9 @@ public final class TranscriptScanner: @unchecked Sendable {
             let dateString = obj["created_at"] as? String
             let date = dateString.flatMap { self.parseDate($0) } ?? Date()
 
+            let rate = PricingService.shared.rateFor(modelName: currentSessionModel)
+            let stepCost = rate.calculateCost(input: inputTokens, cacheRead: cacheReadTokens, output: outputTokens)
+
             let step = TokenStep(
                 stepIndex: stepIndex,
                 sessionId: sessionId,
@@ -187,6 +192,7 @@ public final class TranscriptScanner: @unchecked Sendable {
                 inputTokens: inputTokens,
                 cacheReadTokens: cacheReadTokens,
                 outputTokens: outputTokens,
+                cost: stepCost,
                 modelName: currentSessionModel,
                 surface: surface
             )
@@ -194,6 +200,12 @@ public final class TranscriptScanner: @unchecked Sendable {
         }
 
         return steps
+    }
+
+    public func clearCache() {
+        lock.lock()
+        fileCache.removeAll()
+        lock.unlock()
     }
 
     private func extractSessionId(from fileURL: URL) -> String {
@@ -204,16 +216,58 @@ public final class TranscriptScanner: @unchecked Sendable {
         return fileURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
     }
 
-    private func extractModelFromContent(_ text: String) -> String? {
-        guard let range = text.range(of: "Model Selection` from") else { return nil }
-        let after = text[range.upperBound...]
-        if let toRange = after.range(of: "to ") {
-            let modelCandidate = after[toRange.upperBound...]
-                .components(separatedBy: "\n").first?
-                .components(separatedBy: ".").first?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return modelCandidate
+    public func extractModelFromContent(_ text: String) -> String? {
+        guard text.contains("Model Selection") else { return nil }
+
+        let targetText: String
+        if let startTag = text.range(of: "<USER_SETTINGS_CHANGE>"),
+           let endTag = text.range(of: "</USER_SETTINGS_CHANGE>") {
+            targetText = String(text[startTag.upperBound..<endTag.lowerBound])
+        } else if text.contains("The user changed setting `Model Selection`") {
+            targetText = text
+        } else {
+            return nil
         }
-        return nil
+
+        guard let range = targetText.range(of: "Model Selection` from") else { return nil }
+        let after = targetText[range.upperBound...]
+        guard let toRange = after.range(of: "to ") else { return nil }
+        var candidate = String(after[toRange.upperBound...])
+
+        if let firstLine = candidate.components(separatedBy: "\n").first {
+            candidate = firstLine
+        }
+
+        if let dotSpaceRange = candidate.range(of: ". ") {
+            candidate = String(candidate[..<dotSpaceRange.lowerBound])
+        } else if candidate.hasSuffix(".") {
+            candidate = String(candidate.dropLast())
+        }
+
+        if let parenRange = candidate.range(of: "(") {
+            candidate = String(candidate[..<parenRange.lowerBound])
+        }
+
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isValidModelName(trimmed) else { return nil }
+        return trimmed
+    }
+
+    public func isValidModelName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 && trimmed.count <= 50 else { return false }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-. _"))
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return false
+        }
+
+        let forbidden = ["{", "}", "(", ")", ";", "\"", "'", "[", "]", "return", "nil", "else", "guard", "let", "var", "func", "import", "class", "struct", "enum"]
+        let lower = trimmed.lowercased()
+        for bad in forbidden {
+            if lower.contains(bad) { return false }
+        }
+
+        return true
     }
 }

@@ -151,6 +151,208 @@ struct AGYTokenTrackerTests {
         #expect(sessions[0].surface == .ide)
     }
 
+    @Test("ModelFormatter and canonical naming")
+    func testModelFormatter() {
+        #expect(ModelFormatter.displayName(for: "gemini-3.8-flash") == "Gemini 3.8 Flash")
+        #expect(ModelFormatter.displayName(for: "Gemini 3.8 Flash (High)") == "Gemini 3.8 Flash")
+        #expect(ModelFormatter.displayName(for: "claude-3-5-sonnet") == "Claude 3.5 Sonnet")
+        #expect(ModelFormatter.displayName(for: nil) == "Gemini Flash (Default)")
+        #expect(ModelFormatter.displayName(for: "") == "Gemini Flash (Default)")
+
+        #expect(ModelFormatter.canonicalId(for: "Gemini 3.8 Flash (High)") == "gemini-3.8-flash")
+        #expect(ModelFormatter.canonicalId(for: "gemini-3.8-flash") == "gemini-3.8-flash")
+        #expect(ModelFormatter.provider(for: "Gemini 3.8 Flash") == "Google")
+        #expect(ModelFormatter.provider(for: "Claude 3.5 Sonnet") == "Anthropic")
+    }
+
+    @Test("TranscriptScanner model extraction with version dots and code rejection")
+    func testExtractModelFromTranscript() {
+        let scanner = TranscriptScanner.shared
+        let content1 = "<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it.\n</USER_SETTINGS_CHANGE>"
+        #expect(scanner.extractModelFromContent(content1) == "Gemini 3.8 Flash")
+
+        let content2 = "The user changed setting `Model Selection` from None to Gemini 2.5 Pro. Done."
+        #expect(scanner.extractModelFromContent(content2) == "Gemini 2.5 Pro")
+
+        // Code snippets must never be parsed as models
+        let codeSnippet = "guard let range = text.range(of: \"Model Selection` from\") else { return nil }"
+        #expect(scanner.extractModelFromContent(codeSnippet) == nil)
+        #expect(!scanner.isValidModelName("\") else { return nil }"))
+        #expect(!scanner.isValidModelName("\") {"))
+        #expect(ModelFormatter.displayName(for: "\") else { return nil }") == "Gemini Flash (Default)")
+    }
+
+    @Test("PricingService resolution for human-readable model names")
+    func testHumanReadablePricingResolution() {
+        let pricing = PricingService.shared
+
+        // Spaced and with parentheses
+        let rate38 = pricing.rateFor(modelName: "Gemini 3.8 Flash (High)")
+        let canonical38 = pricing.rateFor(modelName: "gemini-3.8-flash")
+        #expect(rate38.inputPerMillion == canonical38.inputPerMillion)
+        #expect(rate38.outputPerMillion == canonical38.outputPerMillion)
+        #expect(rate38.inputPerMillion == 0.75)
+
+        let ratePro = pricing.rateFor(modelName: "Gemini 2.5 Pro")
+        let canonicalPro = pricing.rateFor(modelName: "gemini-2.5-pro")
+        #expect(ratePro.inputPerMillion == canonicalPro.inputPerMillion)
+        #expect(ratePro.outputPerMillion == canonicalPro.outputPerMillion)
+        #expect(ratePro.inputPerMillion == 1.25)
+    }
+
+    @Test("TrackerViewModel model usage computation and filtering")
+    @MainActor
+    func testModelUsagesAggregation() {
+        let vm = TrackerViewModel()
+        let now = Date()
+
+        let step1 = TokenStep(
+            stepIndex: 1,
+            sessionId: "s1",
+            date: now,
+            inputTokens: 1000,
+            cacheReadTokens: 500,
+            outputTokens: 200,
+            modelName: "gemini-3.8-flash",
+            surface: .desktop
+        )
+
+        let step2 = TokenStep(
+            stepIndex: 2,
+            sessionId: "s2",
+            date: now,
+            inputTokens: 2000,
+            cacheReadTokens: 1000,
+            outputTokens: 400,
+            modelName: "gemini-2.5-pro",
+            surface: .desktop
+        )
+
+        vm.allSteps = [step1, step2]
+        vm.allSessions = [
+            SessionSummary(id: "s1", lastUpdated: now, stepCount: 1, inputTokens: 1000, cacheReadTokens: 500, outputTokens: 200, estimatedCost: 0.1, modelName: "gemini-3.8-flash", surface: .desktop),
+            SessionSummary(id: "s2", lastUpdated: now, stepCount: 1, inputTokens: 2000, cacheReadTokens: 1000, outputTokens: 400, estimatedCost: 0.2, modelName: "gemini-2.5-pro", surface: .desktop)
+        ]
+        vm.recomputeMetrics()
+
+        #expect(vm.modelUsages.count == 2)
+        // gemini-2.5-pro has 3400 tokens, gemini-3.8-flash has 1700 tokens -> pro sorted first
+        #expect(vm.modelUsages[0].displayName == "Gemini 2.5 Pro")
+        #expect(vm.modelUsages[0].totalTokens == 3400)
+        #expect(vm.modelUsages[1].displayName == "Gemini 3.8 Flash")
+        #expect(vm.modelUsages[1].totalTokens == 1700)
+
+        // Test filtering
+        vm.selectedModelFilter = "gemini-3.8-flash"
+        #expect(vm.filteredSessions.count == 1)
+        #expect(vm.filteredSessions.first?.sessionId == "s1")
+
+        vm.selectedModelFilter = nil
+        #expect(vm.filteredSessions.count == 2)
+    }
+
+    @Test("QuotaBucket metrics and gauge color calculation")
+    func testQuotaBucketMetrics() {
+        let healthy = QuotaBucket(id: "b1", name: "Healthy", window: "5h", remainingFraction: 0.85)
+        #expect(healthy.remainingPercent == 85.0)
+        #expect(healthy.usedPercent == 15.0)
+
+        let amber = QuotaBucket(id: "b2", name: "Amber", window: "5h", remainingFraction: 0.20)
+        #expect(amber.remainingPercent == 20.0)
+        #expect(amber.usedPercent == 80.0)
+
+        let critical = QuotaBucket(id: "b3", name: "Critical", window: "5h", remainingFraction: 0.05)
+        #expect(critical.remainingPercent == 5.0)
+        #expect(critical.usedPercent == 95.0)
+
+        // Reset countdown
+        let future = Date().addingTimeInterval(3700) // 1h 1m 40s
+        let bucketWithReset = QuotaBucket(id: "b4", name: "Resetting", window: "5h", remainingFraction: 0.5, resetTime: future)
+        #expect(bucketWithReset.resetCountdownText.contains("Resets in 1h"))
+    }
+
+    @Test("QuotaGroup model matching and bucket resolution")
+    func testQuotaGroupMatching() {
+        let b5h = QuotaBucket(id: "gemini-5h", name: "5-Hour", window: "5h", remainingFraction: 0.70)
+        let bWk = QuotaBucket(id: "gemini-weekly", name: "Weekly", window: "weekly", remainingFraction: 0.90)
+        let geminiGroup = QuotaGroup(name: "Gemini Models", buckets: [b5h, bWk])
+
+        #expect(geminiGroup.matches(modelName: "Gemini 3.8 Flash"))
+        #expect(geminiGroup.matches(modelName: "Gemini 2.5 Pro"))
+        #expect(!geminiGroup.matches(modelName: "Claude 3.7 Sonnet"))
+        #expect(geminiGroup.fiveHourBucket?.id == "gemini-5h")
+        #expect(geminiGroup.weeklyBucket?.id == "gemini-weekly")
+
+        let claudeGroup = QuotaGroup(name: "Claude and GPT models", buckets: [])
+        #expect(claudeGroup.matches(modelName: "Claude 3.7 Sonnet"))
+        #expect(claudeGroup.matches(modelName: "Claude 3.5 Haiku"))
+        #expect(claudeGroup.matches(modelName: "GPT-4o"))
+        #expect(!claudeGroup.matches(modelName: "Gemini 3.8 Flash"))
+    }
+
+    @Test("QuotaService JSON parsing from agy usage output")
+    func testQuotaServiceParsing() throws {
+        let json = """
+        {
+          "status": "SUCCESS",
+          "command": {
+            "name": "usage",
+            "data": {
+              "description": "Shared weekly and 5-hour limit.",
+              "groups": [
+                {
+                  "name": "Gemini Models",
+                  "description": "Models: Gemini Flash, Gemini Pro",
+                  "buckets": [
+                    {
+                      "id": "gemini-weekly",
+                      "name": "Weekly Limit Remaining",
+                      "window": "weekly",
+                      "remaining_fraction": 0.92,
+                      "reset_time": "2026-10-22T07:27:59Z"
+                    },
+                    {
+                      "id": "gemini-5h",
+                      "name": "Five Hour Limit Remaining",
+                      "window": "5h",
+                      "remaining_fraction": 0.71,
+                      "reset_time": "2026-10-15T18:30:00Z"
+                    }
+                  ]
+                },
+                {
+                  "name": "Claude and GPT models",
+                  "buckets": [
+                    {
+                      "id": "3p-weekly",
+                      "name": "Weekly Limit Remaining",
+                      "window": "weekly",
+                      "remaining_fraction": 0.20,
+                      "reset_time": "2026-10-20T16:20:51Z"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let data = Data(json.utf8)
+        let snapshot = try QuotaService.shared.parseQuotaJSON(data: data)
+
+        #expect(snapshot.groups.count == 2)
+        let gemini = snapshot.group(for: "Gemini 3.8 Flash")
+        #expect(gemini != nil)
+        #expect(gemini?.name == "Gemini Models")
+        #expect(gemini?.fiveHourBucket?.remainingPercent == 71.0)
+        #expect(gemini?.weeklyBucket?.remainingPercent == 92.0)
+
+        let claude = snapshot.group(for: "Claude 3.5 Sonnet")
+        #expect(claude != nil)
+        #expect(claude?.weeklyBucket?.remainingPercent == 20.0)
+    }
+
     // MARK: - Protobuf Encoding Helpers for Tests
 
     private func encodeVarint(_ value: UInt64) -> Data {

@@ -98,6 +98,9 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
                     detectedModel = m
                 }
 
+                let rate = PricingService.shared.rateFor(modelName: parsed.modelName)
+                let stepCost = rate.calculateCost(input: parsed.inputTokens, cacheRead: parsed.cacheReadTokens, output: parsed.outputTokens)
+
                 let step = TokenStep(
                     stepIndex: idx,
                     sessionId: sessionId,
@@ -105,6 +108,7 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
                     inputTokens: parsed.inputTokens,
                     cacheReadTokens: parsed.cacheReadTokens,
                     outputTokens: parsed.outputTokens,
+                    cost: stepCost,
                     modelName: parsed.modelName,
                     surface: surface
                 )

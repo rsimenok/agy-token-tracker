@@ -7,6 +7,7 @@ public final class PricingService: @unchecked Sendable {
     private let cacheURL: URL
 
     private var rates: [String: ModelRate] = [:]
+    private var resolutionCache: [String: ModelRate] = [:]
     private let lock = NSLock()
 
     public private(set) var lastSyncDate: Date?
@@ -68,32 +69,69 @@ public final class PricingService: @unchecked Sendable {
             return rates["gemini-2.5-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
         }
 
-        let cleaned = rawName.components(separatedBy: "(").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? rawName
+        // 1. Fast lookup from memoized resolution cache
+        if let cached = resolutionCache[rawName] {
+            return cached
+        }
 
-        // 1. Exact match
-        if let direct = rates[rawName] ?? rates[cleaned] {
+        var cleaned = rawName
+        cleaned = cleaned.replacingOccurrences(of: "\"", with: "")
+        cleaned = cleaned.replacingOccurrences(of: "`", with: "")
+        if let parenIdx = cleaned.firstIndex(of: "(") {
+            cleaned = String(cleaned[..<parenIdx])
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hyphenated = cleaned.replacingOccurrences(of: " ", with: "-")
+
+        if let cached = resolutionCache[cleaned] ?? resolutionCache[hyphenated] {
+            resolutionCache[rawName] = cached
+            return cached
+        }
+
+        // 2. Exact match in rates dictionary
+        if let direct = rates[rawName] ?? rates[cleaned] ?? rates[hyphenated] {
+            resolutionCache[rawName] = direct
+            resolutionCache[cleaned] = direct
+            resolutionCache[hyphenated] = direct
             return direct
         }
 
-        // 2. Longest matching key (most specific match)
-        var bestMatch: (key: String, rate: ModelRate)?
-        for (key, rate) in rates {
-            if rawName.contains(key) || cleaned.contains(key) {
-                if bestMatch == nil || key.count > bestMatch!.key.count {
-                    bestMatch = (key, rate)
-                }
-            }
+        // 3. Known model family pattern matching (instant, no dictionary linear scan)
+        let resolved: ModelRate
+        if hyphenated.contains("3.8-flash") || hyphenated.contains("3.8flash") {
+            resolved = rates["gemini-3.8-flash"] ?? ModelRate(inputPerMillion: 0.75, cacheReadPerMillion: 0.1875, outputPerMillion: 3.00)
+        } else if hyphenated.contains("3-flash") || hyphenated.contains("3.0-flash") {
+            resolved = rates["gemini-3-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
+        } else if hyphenated.contains("2.5-flash") {
+            resolved = rates["gemini-2.5-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
+        } else if hyphenated.contains("2.0-flash") || hyphenated.contains("2-flash") {
+            resolved = rates["gemini-2.0-flash"] ?? ModelRate(inputPerMillion: 0.10, cacheReadPerMillion: 0.0250, outputPerMillion: 0.40)
+        } else if hyphenated.contains("1.5-flash") {
+            resolved = rates["gemini-1.5-flash"] ?? ModelRate(inputPerMillion: 0.075, cacheReadPerMillion: 0.01875, outputPerMillion: 0.30)
+        } else if hyphenated.contains("flash") {
+            resolved = rates["gemini-2.5-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
+        } else if hyphenated.contains("2.5-pro") {
+            resolved = rates["gemini-2.5-pro"] ?? ModelRate(inputPerMillion: 1.25, cacheReadPerMillion: 0.3125, outputPerMillion: 5.00)
+        } else if hyphenated.contains("1.5-pro") {
+            resolved = rates["gemini-1.5-pro"] ?? ModelRate(inputPerMillion: 1.25, cacheReadPerMillion: 0.3125, outputPerMillion: 5.00)
+        } else if hyphenated.contains("pro") {
+            resolved = rates["gemini-2.5-pro"] ?? ModelRate(inputPerMillion: 1.25, cacheReadPerMillion: 0.3125, outputPerMillion: 5.00)
+        } else if hyphenated.contains("3-7-sonnet") || hyphenated.contains("3.7-sonnet") {
+            resolved = rates["claude-3-7-sonnet"] ?? ModelRate(inputPerMillion: 3.00, cacheReadPerMillion: 0.30, outputPerMillion: 15.00)
+        } else if hyphenated.contains("3-5-sonnet") || hyphenated.contains("3.5-sonnet") {
+            resolved = rates["claude-3-5-sonnet"] ?? ModelRate(inputPerMillion: 3.00, cacheReadPerMillion: 0.30, outputPerMillion: 15.00)
+        } else if hyphenated.contains("haiku") {
+            resolved = rates["claude-3-5-haiku"] ?? ModelRate(inputPerMillion: 0.80, cacheReadPerMillion: 0.08, outputPerMillion: 4.00)
+        } else if hyphenated.contains("opus") {
+            resolved = rates["claude-3-opus"] ?? ModelRate(inputPerMillion: 15.00, cacheReadPerMillion: 1.50, outputPerMillion: 75.00)
+        } else {
+            resolved = rates["gemini-2.5-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
         }
 
-        if let best = bestMatch {
-            return best.rate
-        }
-
-        if rawName.contains("pro") {
-            return rates["gemini-2.5-pro"]!
-        }
-
-        return rates["gemini-2.5-flash"]!
+        resolutionCache[rawName] = resolved
+        resolutionCache[cleaned] = resolved
+        resolutionCache[hyphenated] = resolved
+        return resolved
     }
 
     public func fetchRemotePricing() async {
@@ -132,5 +170,6 @@ public final class PricingService: @unchecked Sendable {
                 )
             }
         }
+        resolutionCache.removeAll()
     }
 }

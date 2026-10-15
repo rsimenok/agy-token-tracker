@@ -3,30 +3,53 @@ import AppKit
 
 public struct SettingsSheet: View {
     @ObservedObject var tracker: TrackerViewModel
-    @Environment(\.dismiss) private var dismiss
+    var onClose: () -> Void = {}
 
-    public init(tracker: TrackerViewModel) {
+    public init(tracker: TrackerViewModel, onClose: @escaping () -> Void = {}) {
         self.tracker = tracker
+        self.onClose = onClose
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                HStack(spacing: 6) {
+                Button(action: {
+                    tracker.isShowingSettings = false
+                    onClose()
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Back")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                HStack(spacing: 5) {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.accentColor)
                     Text("Settings")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                 }
+
                 Spacer()
-                Button(action: { dismiss() }) {
+
+                Button(action: {
+                    tracker.isShowingSettings = false
+                    onClose()
+                }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Close settings")
             }
 
             Divider()
@@ -34,18 +57,54 @@ public struct SettingsSheet: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     // 1. Menu Bar Display Mode
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Menu Bar Item Title")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("MENU BAR DISPLAY")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                                .tracking(0.5)
 
-                        Picker("", selection: $tracker.displayMode) {
-                            ForEach(StatusDisplayMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                            Spacer()
+
+                            // Live preview of menu bar
+                            HStack(spacing: 4) {
+                                Image(systemName: "brain.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.primary)
+
+                                if tracker.displayMode != .compact && !tracker.menuBarTitle.isEmpty {
+                                    Text(tracker.menuBarTitle)
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.primary)
+                                }
                             }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06))
+                            .cornerRadius(5)
+                        }
+
+                        Picker("Display Mode", selection: $tracker.displayMode) {
+                            Text("Tokens (\(TrackerViewModel.formatCompact(tracker.totalTokens)))").tag(StatusDisplayMode.tokens)
+                            Text("Cost (\(TrackerViewModel.formatCurrency(tracker.totalCost)))").tag(StatusDisplayMode.cost)
+                            Text("Icon Only").tag(StatusDisplayMode.compact)
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        Text("Choose whether the top menu bar shows token count, estimated cost in USD, or only the brain icon.")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
                     }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                            )
+                    )
 
                     // 2. Monitored Surfaces
                     VStack(alignment: .leading, spacing: 8) {
@@ -161,8 +220,8 @@ public struct SettingsSheet: View {
                 .font(.system(size: 11))
             }
         }
-        .padding(16)
-        .frame(width: 420, height: 440)
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

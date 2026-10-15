@@ -10,6 +10,16 @@ public enum StatusDisplayMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum AppViewTab: String, CaseIterable, Identifiable {
+    case overview = "Overview"
+    case models = "Models"
+    case sessions = "Sessions"
+
+    public var id: String { rawValue }
+}
+
+public typealias DashboardTab = AppViewTab
+
 public struct ComputedMetrics: Sendable {
     public var inputTokens: Int = 0
     public var cacheReadTokens: Int = 0
@@ -63,20 +73,36 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
+    @Published public var currentView: AppViewTab = .overview
+    public var selectedTab: DashboardTab {
+        get { currentView }
+        set { currentView = newValue }
+    }
+    @Published public var selectedModelFilter: String? = nil {
+        didSet {
+            recomputeFilteredSessions()
+        }
+    }
+
     @Published public var allSteps: [TokenStep] = []
     @Published public var allSessions: [SessionSummary] = []
     @Published public var isScanning: Bool = false
     @Published public var isPulsing: Bool = false
     @Published public var lastRefreshDate: Date = Date()
     @Published public var pricingSyncDate: Date?
+    @Published public var quotaSnapshot: QuotaSnapshot?
+    @Published public var isFetchingQuota: Bool = false
+    @Published public var isShowingSettings: Bool = false
 
     @Published public private(set) var currentMetrics = ComputedMetrics()
     @Published public private(set) var filteredSessions: [SessionSummary] = []
+    @Published public private(set) var modelUsages: [ModelUsage] = []
     @Published public private(set) var breakdownMap: [AppSurface: (tokens: Int, cost: Double, sessionsCount: Int)] = [:]
 
     private let unifiedScanner = UnifiedScanner.shared
     private let pricing = PricingService.shared
     private let watcher = FolderWatcher()
+    private let quotaService = QuotaService.shared
 
     public init() {
         if let savedPeriod = UserDefaults.standard.string(forKey: "agy_selected_period") ?? UserDefaults.standard.string(forKey: "agv_selected_period"),
@@ -96,8 +122,10 @@ public final class TrackerViewModel: ObservableObject {
 
         self.customBrainPath = UserDefaults.standard.string(forKey: "agy_custom_brain_path") ?? UserDefaults.standard.string(forKey: "agv_custom_brain_path") ?? ""
         self.pricingSyncDate = pricing.lastSyncDate
+        self.quotaSnapshot = quotaService.currentSnapshot
 
         refresh()
+        refreshQuota()
         startWatcher()
 
         Task {
@@ -111,9 +139,11 @@ public final class TrackerViewModel: ObservableObject {
 
     public func startWatcher() {
         var watchDirs: [URL] = [
-            AppSurface.desktop.defaultDirectoryURL,
-            AppSurface.cli.defaultDirectoryURL,
-            AppSurface.ide.defaultDirectoryURL
+            AppSurface.desktop.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
+            AppSurface.cli.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
+            AppSurface.cli.defaultDirectoryURL.appendingPathComponent("conversations", isDirectory: true),
+            AppSurface.ide.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
+            AppSurface.ide.defaultDirectoryURL.appendingPathComponent("conversations", isDirectory: true)
         ]
 
         if !customBrainPath.isEmpty {
@@ -129,9 +159,11 @@ public final class TrackerViewModel: ObservableObject {
     }
 
     public func refresh() {
+        guard !isScanning else { return }
         isScanning = true
         let customPath = customBrainPath.isEmpty ? nil : customBrainPath
 
+        refreshQuota()
         Task.detached(priority: .userInitiated) { [unifiedScanner] in
             let (steps, sessions) = unifiedScanner.scanAllSurfaces(customDesktopBrainPath: customPath)
             await MainActor.run {
@@ -144,6 +176,21 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
+    public func refreshQuota() {
+        guard !isFetchingQuota else { return }
+        isFetchingQuota = true
+
+        Task { [weak self] in
+            guard let self = self else { return }
+            let snapshot = await self.quotaService.fetchLiveQuota()
+            await MainActor.run {
+                self.quotaSnapshot = snapshot
+                self.isFetchingQuota = false
+                self.recomputeMetrics()
+            }
+        }
+    }
+
     private func triggerPulse() {
         isPulsing = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -151,7 +198,7 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Fast Precomputed Metrics
+    // MARK: - Fast Precomputed Metrics (Single Pass, Zero Blocking)
 
     public func recomputeMetrics() {
         let interval = selectedPeriod.dateInterval()
@@ -162,16 +209,74 @@ public final class TrackerViewModel: ObservableObject {
         var outTok = 0
         var cost = 0.0
 
+        var desktopTok = 0
+        var desktopCost = 0.0
+        var cliTok = 0
+        var cliCost = 0.0
+        var ideTok = 0
+        var ideCost = 0.0
+
+        struct ModelAccumulator {
+            let displayName: String
+            let provider: String
+            let color: Color
+            let rate: ModelRate
+            var inputTokens: Int = 0
+            var cacheReadTokens: Int = 0
+            var outputTokens: Int = 0
+            var cost: Double = 0.0
+            var stepCount: Int = 0
+            var sessionIds = Set<String>()
+        }
+
+        var modelMap: [String: ModelAccumulator] = [:]
+
+        // Single pass over allSteps for metrics, model breakdown, and surface breakdown
         for step in allSteps {
-            if surface != .all && step.surface != surface { continue }
-            if !selectedPeriod.matches(date: step.date, interval: interval) { continue }
+            guard selectedPeriod.matches(date: step.date, interval: interval) else { continue }
+
+            // Surface breakdown counters
+            switch step.surface {
+            case .desktop:
+                desktopTok += step.totalTokens
+                desktopCost += step.cost
+            case .cli:
+                cliTok += step.totalTokens
+                cliCost += step.cost
+            case .ide:
+                ideTok += step.totalTokens
+                ideCost += step.cost
+            case .all:
+                break
+            }
+
+            // Surface filter for main cards
+            guard surface == .all || step.surface == surface else { continue }
 
             inTok += step.inputTokens
             cacheTok += step.cacheReadTokens
             outTok += step.outputTokens
+            cost += step.cost
 
-            let rate = pricing.rateFor(modelName: step.modelName)
-            cost += rate.calculateCost(input: step.inputTokens, cacheRead: step.cacheReadTokens, output: step.outputTokens)
+            let canonicalId = step.canonicalModelId
+            if modelMap[canonicalId] == nil {
+                let displayName = ModelFormatter.displayName(for: step.modelName)
+                let color = ModelFormatter.color(for: displayName)
+                let provider = ModelFormatter.provider(for: displayName)
+                let rate = pricing.rateFor(modelName: step.modelName)
+                modelMap[canonicalId] = ModelAccumulator(
+                    displayName: displayName,
+                    provider: provider,
+                    color: color,
+                    rate: rate
+                )
+            }
+            modelMap[canonicalId]!.inputTokens += step.inputTokens
+            modelMap[canonicalId]!.cacheReadTokens += step.cacheReadTokens
+            modelMap[canonicalId]!.outputTokens += step.outputTokens
+            modelMap[canonicalId]!.cost += step.cost
+            modelMap[canonicalId]!.stepCount += 1
+            modelMap[canonicalId]!.sessionIds.insert(step.sessionId)
         }
 
         let total = inTok + cacheTok + outTok
@@ -187,25 +292,81 @@ public final class TrackerViewModel: ObservableObject {
             cacheHitPercentage: hitPct
         )
 
+        var usages: [ModelUsage] = []
+        for (id, acc) in modelMap {
+            let mTotal = acc.inputTokens + acc.cacheReadTokens + acc.outputTokens
+            let pct = total > 0 ? (Double(mTotal) / Double(total)) * 100.0 : 0.0
+            let mPrompt = acc.inputTokens + acc.cacheReadTokens
+            let mHitPct = mPrompt > 0 ? (Double(acc.cacheReadTokens) / Double(mPrompt)) * 100.0 : 0.0
+
+            let group = quotaSnapshot?.group(for: acc.displayName)
+            usages.append(ModelUsage(
+                id: id,
+                displayName: acc.displayName,
+                provider: acc.provider,
+                inputTokens: acc.inputTokens,
+                cacheReadTokens: acc.cacheReadTokens,
+                outputTokens: acc.outputTokens,
+                totalTokens: mTotal,
+                estimatedCost: acc.cost,
+                stepCount: acc.stepCount,
+                sessionCount: acc.sessionIds.count,
+                percentageOfTotal: pct,
+                cacheHitPercentage: mHitPct,
+                rate: acc.rate,
+                color: acc.color,
+                quotaGroup: group
+            ))
+        }
+        usages.sort { ($0.estimatedCost, $0.totalTokens) > ($1.estimatedCost, $1.totalTokens) }
+        self.modelUsages = usages
+
+        // Single pass over allSessions for filtering and session counts
+        var desktopSessions = 0
+        var cliSessions = 0
+        var ideSessions = 0
+        var filtered: [SessionSummary] = []
+
+        for session in allSessions {
+            guard selectedPeriod.matches(date: session.lastUpdated, interval: interval) else { continue }
+            switch session.surface {
+            case .desktop: desktopSessions += 1
+            case .cli: cliSessions += 1
+            case .ide: ideSessions += 1
+            case .all: break
+            }
+
+            guard surface == .all || session.surface == surface else { continue }
+            if let modelFilter = selectedModelFilter {
+                let sessionModelId = ModelFormatter.canonicalId(for: session.modelName)
+                guard sessionModelId == modelFilter else { continue }
+            }
+            filtered.append(session)
+        }
+        self.filteredSessions = filtered
+
+        self.breakdownMap = [
+            .desktop: (desktopTok, desktopCost, desktopSessions),
+            .cli: (cliTok, cliCost, cliSessions),
+            .ide: (ideTok, ideCost, ideSessions)
+        ]
+    }
+
+    public func recomputeFilteredSessions() {
+        let interval = selectedPeriod.dateInterval()
+        let surface = selectedSurface
+
         self.filteredSessions = allSessions.filter { session in
             let surfaceMatch = (surface == .all || session.surface == surface)
             let periodMatch = selectedPeriod.matches(date: session.lastUpdated, interval: interval)
-            return surfaceMatch && periodMatch
-        }
+            guard surfaceMatch && periodMatch else { return false }
 
-        var bMap: [AppSurface: (tokens: Int, cost: Double, sessionsCount: Int)] = [:]
-        for surf in [AppSurface.desktop, AppSurface.cli, AppSurface.ide] {
-            var sTok = 0
-            var sCost = 0.0
-            for step in allSteps where step.surface == surf && selectedPeriod.matches(date: step.date, interval: interval) {
-                sTok += step.totalTokens
-                let rate = pricing.rateFor(modelName: step.modelName)
-                sCost += rate.calculateCost(input: step.inputTokens, cacheRead: step.cacheReadTokens, output: step.outputTokens)
+            if let modelFilter = selectedModelFilter {
+                let sessionModelId = ModelFormatter.canonicalId(for: session.modelName)
+                return sessionModelId == modelFilter
             }
-            let sCount = allSessions.filter { $0.surface == surf && selectedPeriod.matches(date: $0.lastUpdated, interval: interval) }.count
-            bMap[surf] = (sTok, sCost, sCount)
+            return true
         }
-        self.breakdownMap = bMap
     }
 
     public var totalInputTokens: Int { currentMetrics.inputTokens }
@@ -222,11 +383,11 @@ public final class TrackerViewModel: ObservableObject {
     public var menuBarTitle: String {
         switch displayMode {
         case .tokens:
-            return "⚡️ \(Self.formatCompact(totalTokens))"
+            return Self.formatCompact(totalTokens)
         case .cost:
-            return "⚡️ \(Self.formatCurrency(totalCost))"
+            return Self.formatCurrency(totalCost)
         case .compact:
-            return "⚡️"
+            return ""
         }
     }
 
