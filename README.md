@@ -1,13 +1,20 @@
-# AGV Token Tracker (Antigravity 2.0 Menu Bar Monitor) ⚡️
+# AGV Token Tracker (Antigravity Unified Menu Bar Monitor) ⚡️
 
-Нативний macOS додаток для статус-бару (Menu Bar), аналогічний до Syrtis / TokenBar, спеціально розроблений для відстеження використання токенів та витрат у **Antigravity 2.0**.
+Нативний macOS додаток для статус-бару (Menu Bar), аналогічний до Syrtis / TokenBar, спеціально розроблений для моніторингу використання токенів та витрат в усій екосистемі **Antigravity**:
+1. **Antigravity 2.0 (Desktop)**
+2. **Antigravity CLI (`agy`)**
+3. **Antigravity IDE (VS Code Extension / LS)**
 
 ---
 
 ## 🚀 Можливості (Features)
 
 - **Нативний macOS інтерфейс (SwiftUI & AppKit)**: Легкий, швидкий додаток для меню-бару з дизайном Liquid Glass (без іконки в Dock, працює виключно в статус-барі).
-- **Підтримка Antigravity 2.0**: Автоматично знаходить та парсить транскрипти діалогів (`~/.gemini/antigravity/brain/**/transcript.jsonl`), включно з субагентами.
+- **Мульти-додатковий трекінг (Unified & Filterable)**:
+  - 🌐 **All (Unified)**: Загальний підсумок по всій екосистемі з інтерактивними картками розбивки по кожному додатку.
+  - 🖥️ **2.0 (Desktop)**: Відстеження окремо для десктопного Antigravity 2.0 (`~/.gemini/antigravity/brain/**/transcript.jsonl`).
+  - 💻 **CLI (`agy`)**: Відстеження консольних сесій CLI (`~/.gemini/antigravity-cli`).
+  - 📝 **IDE**: Відстеження IDE розширень (`~/.gemini/antigravity-ide/conversations/*.db`).
 - **Гнучкі часові періоди**:
   - **Сьогодні (Today)**
   - **Вчора (Yesterday)**
@@ -22,9 +29,12 @@
 - **Розрахунок вартості ($ USD)**:
   - Автоматичне завантаження актуальних тарифів з відкритої бази **LiteLLM** (`model_prices_and_context_window.json`).
   - Вбудована офлайн-таблиця для сімейства **Gemini 3.8/2.5/2.0/1.5 Flash**, **Gemini Pro** та **Claude**.
-- **Live File Watcher**: Миттєве реактивне оновлення лічильників при генерації нових токенів у розмовах Antigravity без перезапуску.
-- **Історія сесій**: Список останніх розмов із таймстемпами, моделями, кількістю кроків та вартістю.
-- **Налаштування**: Вибір формату відображення в меню-барі (Токени, Вартість або тільки іконка), кастомний шлях до логів, ручна синхронізація цін.
+- **Двошаровий парсер (JSONL + SQLite Protobuf)**:
+  - Потоковий JSONL аналізатор для швидкого читання траєкторій планувальника.
+  - Вбудований нативний SQLite та легковий декодер wire-формату Google Protobuf (`gen_metadata`) без зовнішніх C++ бібліотек.
+- **Live File Watcher**: Миттєве реактивне оновлення лічильників при генерації нових токенів у розмовах Desktop, CLI або IDE.
+- **Історія сесій**: Список останніх розмов із кольоровими бейджами додатку (`[2.0]`, `[CLI]`, `[IDE]`), таймстемпами, моделями, кількістю кроків та вартістю.
+- **Налаштування**: Статус моніторингу шляхів усіх трьох середовищ, швидкий перехід у Finder, вибір формату в меню-барі (Токени, Вартість або тільки іконка), ручна синхронізація тарифів.
 
 ---
 
@@ -63,25 +73,27 @@ cp -r build/AGVTokenTracker.app /Applications/
 
 ```text
 Sources/AGVTokenTracker/
-├── AGVTokenTracker.swift          # Точка входу (@main) з MenuBarExtra (.window)
+├── AGVTokenTracker.swift              # Точка входу (@main) з MenuBarExtra (.window)
 ├── Models/
-│   ├── TokenStep.swift            # Модель окремого кроку (PLANNER_RESPONSE)
-│   ├── SessionSummary.swift       # Агрегована статистика сесії (UUID)
-│   ├── TimePeriod.swift           # Логіка фільтрації за часом
-│   └── ModelPricing.swift         # Розрахунок тарифів і вартості
+│   ├── AppSurface.swift               # Перелік поверхонь (.all, .desktop, .cli, .ide)
+│   ├── TokenStep.swift                # Модель окремого кроку та SessionSummary
+│   ├── TimePeriod.swift               # Логіка фільтрації за часом
+│   └── ModelPricing.swift             # Розрахунок тарифів і вартості
 ├── Services/
-│   ├── TranscriptScanner.swift    # Сканування та парсинг transcript.jsonl
-│   ├── PricingService.swift       # Синхронізація з LiteLLM + офлайн-тарифи
-│   └── FolderWatcher.swift        # FSEvents / DispatchSource спостерігач
+│   ├── UnifiedScanner.swift           # Головний координатор збору даних з усіх середовищ
+│   ├── TranscriptScanner.swift        # Сканування та парсинг transcript.jsonl
+│   ├── SQLiteConversationScanner.swift# SQLite + Protobuf парсер для CLI та IDE баз даних
+│   ├── PricingService.swift           # Синхронізація з LiteLLM + офлайн-тарифи
+│   └── FolderWatcher.swift            # FSEvents / DispatchSource мульти-директорійний спостерігач
 ├── ViewModels/
-│   └── TrackerViewModel.swift     # Головна ViewModel стану додатку
+│   └── TrackerViewModel.swift         # Головна ViewModel стану додатку
 └── Views/
-    ├── StatusItemLabel.swift      # Відображення іконки та тексту в статус-барі
-    ├── DashboardView.swift        # Головне поповер-вікно дашборду
-    ├── HeroStatsCard.swift        # Картка загальних токенів та вартості
-    ├── MetricCardView.swift       # 2x2 картки метрик (Input/Cache/Output/Eff)
-    ├── SessionRowView.swift       # Елемент списку останніх розмов
-    └── SettingsSheet.swift        # Вікно налаштувань
+    ├── StatusItemLabel.swift          # Відображення іконки та тексту в статус-барі
+    ├── DashboardView.swift            # Головне поповер-вікно дашборду з розбивкою по додатках
+    ├── HeroStatsCard.swift            # Картка загальних токенів та вартості
+    ├── MetricCardView.swift           # 2x2 картки метрик (Input/Cache/Output/Eff)
+    ├── SessionRowView.swift           # Елемент списку розмов із бейджами поверхонь
+    └── SettingsSheet.swift            # Вікно налаштувань та перегляду статусів директорій
 ```
 
 ---

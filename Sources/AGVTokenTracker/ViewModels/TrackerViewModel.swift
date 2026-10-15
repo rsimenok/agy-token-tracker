@@ -18,6 +18,12 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
+    @Published public var selectedSurface: AppSurface = .all {
+        didSet {
+            UserDefaults.standard.set(selectedSurface.rawValue, forKey: "agv_selected_surface")
+        }
+    }
+
     @Published public var displayMode: StatusDisplayMode = .tokens {
         didSet {
             UserDefaults.standard.set(displayMode.rawValue, forKey: "agv_display_mode")
@@ -37,7 +43,7 @@ public final class TrackerViewModel: ObservableObject {
     @Published public var lastRefreshDate: Date = Date()
     @Published public var pricingSyncDate: Date?
 
-    private let scanner = TranscriptScanner.shared
+    private let unifiedScanner = UnifiedScanner.shared
     private let pricing = PricingService.shared
     private let watcher = FolderWatcher()
 
@@ -45,6 +51,11 @@ public final class TrackerViewModel: ObservableObject {
         if let savedPeriod = UserDefaults.standard.string(forKey: "agv_selected_period"),
            let period = TimePeriod(rawValue: savedPeriod) {
             self.selectedPeriod = period
+        }
+
+        if let savedSurface = UserDefaults.standard.string(forKey: "agv_selected_surface"),
+           let surface = AppSurface(rawValue: savedSurface) {
+            self.selectedSurface = surface
         }
 
         if let savedMode = UserDefaults.standard.string(forKey: "agv_display_mode"),
@@ -68,8 +79,17 @@ public final class TrackerViewModel: ObservableObject {
     }
 
     public func startWatcher() {
-        let brainURL = scanner.resolveBrainDirectory(customPath: customBrainPath.isEmpty ? nil : customBrainPath)
-        watcher.start(watching: brainURL) { [weak self] in
+        var watchDirs: [URL] = [
+            AppSurface.desktop.defaultDirectoryURL,
+            AppSurface.cli.defaultDirectoryURL,
+            AppSurface.ide.defaultDirectoryURL
+        ]
+
+        if !customBrainPath.isEmpty {
+            watchDirs.append(URL(fileURLWithPath: (customBrainPath as NSString).expandingTildeInPath))
+        }
+
+        watcher.start(watching: watchDirs) { [weak self] in
             Task { @MainActor [weak self] in
                 self?.triggerPulse()
                 self?.refresh()
@@ -79,10 +99,10 @@ public final class TrackerViewModel: ObservableObject {
 
     public func refresh() {
         isScanning = true
-        let brainURL = scanner.resolveBrainDirectory(customPath: customBrainPath.isEmpty ? nil : customBrainPath)
+        let customPath = customBrainPath.isEmpty ? nil : customBrainPath
 
-        Task.detached(priority: .userInitiated) { [scanner] in
-            let (steps, sessions) = scanner.scanAll(brainURL: brainURL)
+        Task.detached(priority: .userInitiated) { [unifiedScanner] in
+            let (steps, sessions) = unifiedScanner.scanAllSurfaces(customDesktopBrainPath: customPath)
             await MainActor.run {
                 self.allSteps = steps
                 self.allSessions = sessions
@@ -102,11 +122,19 @@ public final class TrackerViewModel: ObservableObject {
     // MARK: - Filtered Metrics
 
     public var filteredSteps: [TokenStep] {
-        allSteps.filter { selectedPeriod.matches(date: $0.date) }
+        allSteps.filter { step in
+            let surfaceMatch = (selectedSurface == .all || step.surface == selectedSurface)
+            let periodMatch = selectedPeriod.matches(date: step.date)
+            return surfaceMatch && periodMatch
+        }
     }
 
     public var filteredSessions: [SessionSummary] {
-        allSessions.filter { selectedPeriod.matches(date: $0.lastUpdated) }
+        allSessions.filter { session in
+            let surfaceMatch = (selectedSurface == .all || session.surface == selectedSurface)
+            let periodMatch = selectedPeriod.matches(date: session.lastUpdated)
+            return surfaceMatch && periodMatch
+        }
     }
 
     public var totalInputTokens: Int {
@@ -140,6 +168,27 @@ public final class TrackerViewModel: ObservableObject {
         let promptTokens = totalInputTokens + totalCacheReadTokens
         guard promptTokens > 0 else { return 0 }
         return (Double(totalCacheReadTokens) / Double(promptTokens)) * 100.0
+    }
+
+    public func surfaceMetrics(for surface: AppSurface) -> (tokens: Int, cost: Double, sessionsCount: Int) {
+        let periodSteps = allSteps.filter { step in
+            step.surface == surface && selectedPeriod.matches(date: step.date)
+        }
+        let periodSessions = allSessions.filter { session in
+            session.surface == surface && selectedPeriod.matches(date: session.lastUpdated)
+        }
+
+        let tokens = periodSteps.reduce(0) { $0 + $1.totalTokens }
+        let cost = periodSteps.reduce(0.0) { acc, step in
+            let rate = pricing.rateFor(modelName: step.modelName)
+            return acc + rate.calculateCost(
+                input: step.inputTokens,
+                cacheRead: step.cacheReadTokens,
+                output: step.outputTokens
+            )
+        }
+
+        return (tokens, cost, periodSessions.count)
     }
 
     public var menuBarTitle: String {

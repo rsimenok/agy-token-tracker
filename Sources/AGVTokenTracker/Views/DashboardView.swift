@@ -13,18 +13,18 @@ public struct DashboardView: View {
         VStack(spacing: 12) {
             // Header Bar
             HStack(spacing: 8) {
-                Image(systemName: "bolt.shield.fill")
+                Image(systemName: tracker.selectedSurface == .all ? "bolt.shield.fill" : tracker.selectedSurface.iconName)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.yellow, .orange],
+                            colors: tracker.selectedSurface == .all ? [.yellow, .orange] : [tracker.selectedSurface.badgeColor, tracker.selectedSurface.badgeColor.opacity(0.8)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Antigravity 2.0")
+                    Text(tracker.selectedSurface == .all ? "Antigravity Unified" : tracker.selectedSurface.rawValue)
                         .font(.system(size: 13, weight: .bold))
                     Text("Token & Cost Monitor")
                         .font(.system(size: 10))
@@ -58,14 +58,28 @@ public struct DashboardView: View {
             .padding(.horizontal, 14)
             .padding(.top, 12)
 
+            // Surface Selector (All | 2.0 | CLI | IDE)
+            Picker("Surface", selection: $tracker.selectedSurface) {
+                ForEach(AppSurface.allCases) { surface in
+                    Text(surface.shortLabel).tag(surface)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 14)
+
             // Period Selector
-            Picker("", selection: $tracker.selectedPeriod) {
+            Picker("Period", selection: $tracker.selectedPeriod) {
                 ForEach(TimePeriod.allCases) { period in
                     Text(period.rawValue).tag(period)
                 }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 14)
+
+            // Surface Breakdown (Visible when "All" is active)
+            if tracker.selectedSurface == .all {
+                SurfaceBreakdownView(tracker: tracker)
+            }
 
             // Main Hero Card
             HeroStatsCard(
@@ -187,3 +201,67 @@ public struct DashboardView: View {
         }
     }
 }
+
+public struct SurfaceBreakdownView: View {
+    @ObservedObject var tracker: TrackerViewModel
+
+    private let surfaces: [AppSurface] = [.desktop, .cli, .ide]
+
+    public init(tracker: TrackerViewModel) {
+        self.tracker = tracker
+    }
+
+    public var body: some View {
+        HStack(spacing: 6) {
+            ForEach(surfaces) { surface in
+                let metrics = tracker.surfaceMetrics(for: surface)
+                Button(action: {
+                    tracker.selectedSurface = surface
+                }) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(surface.badgeColor)
+                                .frame(width: 6, height: 6)
+                            Text(surface.shortLabel)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: surface.iconName)
+                                .font(.system(size: 9))
+                                .foregroundColor(surface.badgeColor)
+                        }
+
+                        Text(TrackerViewModel.formatCompact(metrics.tokens))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        HStack {
+                            Text(TrackerViewModel.formatCurrency(metrics.cost))
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundColor(.green)
+                            Spacer()
+                            Text("\(metrics.sessionsCount) ses")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(surface.badgeColor.opacity(0.2), lineWidth: 1)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Filter to \(surface.rawValue)")
+            }
+        }
+        .padding(.horizontal, 14)
+    }
+}
+

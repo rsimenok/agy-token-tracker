@@ -32,7 +32,7 @@ public final class TranscriptScanner: @unchecked Sendable {
             .appendingPathComponent(".gemini/antigravity/brain", isDirectory: true)
     }
 
-    public func scanAll(brainURL: URL? = nil) -> (steps: [TokenStep], sessions: [SessionSummary]) {
+    public func scanAll(brainURL: URL? = nil, surface: AppSurface = .desktop) -> (steps: [TokenStep], sessions: [SessionSummary]) {
         let targetURL = brainURL ?? resolveBrainDirectory()
         guard FileManager.default.fileExists(atPath: targetURL.path) else {
             return ([], [])
@@ -45,7 +45,7 @@ public final class TranscriptScanner: @unchecked Sendable {
         let transcriptFiles = findTranscriptFiles(in: targetURL)
 
         for fileURL in transcriptFiles {
-            let sessionSteps = parseTranscriptFile(fileURL: fileURL)
+            let sessionSteps = parseTranscriptFile(fileURL: fileURL, surface: surface)
             if !sessionSteps.isEmpty {
                 allSteps.append(contentsOf: sessionSteps)
 
@@ -68,7 +68,8 @@ public final class TranscriptScanner: @unchecked Sendable {
                     cacheReadTokens: totalCache,
                     outputTokens: totalOutput,
                     estimatedCost: cost,
-                    modelName: detectedModel
+                    modelName: detectedModel,
+                    surface: surface
                 ))
             }
         }
@@ -108,7 +109,7 @@ public final class TranscriptScanner: @unchecked Sendable {
         return results
     }
 
-    public func parseTranscriptFile(fileURL: URL) -> [TokenStep] {
+    public func parseTranscriptFile(fileURL: URL, surface: AppSurface = .desktop) -> [TokenStep] {
         guard let data = try? Data(contentsOf: fileURL),
               let content = String(data: data, encoding: .utf8) else {
             return []
@@ -159,7 +160,8 @@ public final class TranscriptScanner: @unchecked Sendable {
                 inputTokens: inputTokens,
                 cacheReadTokens: cacheReadTokens,
                 outputTokens: outputTokens,
-                modelName: currentSessionModel
+                modelName: currentSessionModel,
+                surface: surface
             )
             steps.append(step)
         }

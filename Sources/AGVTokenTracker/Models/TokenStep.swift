@@ -9,6 +9,7 @@ public struct TokenStep: Identifiable, Sendable {
     public let cacheReadTokens: Int
     public let outputTokens: Int
     public let modelName: String?
+    public let surface: AppSurface
 
     public var totalTokens: Int {
         inputTokens + cacheReadTokens + outputTokens
@@ -25,9 +26,10 @@ public struct TokenStep: Identifiable, Sendable {
         inputTokens: Int,
         cacheReadTokens: Int,
         outputTokens: Int,
-        modelName: String? = nil
+        modelName: String? = nil,
+        surface: AppSurface = .desktop
     ) {
-        self.id = "\(sessionId):\(stepIndex)"
+        self.id = "\(surface.rawValue):\(sessionId):\(stepIndex)"
         self.stepIndex = stepIndex
         self.sessionId = sessionId
         self.date = date
@@ -35,11 +37,13 @@ public struct TokenStep: Identifiable, Sendable {
         self.cacheReadTokens = cacheReadTokens
         self.outputTokens = outputTokens
         self.modelName = modelName
+        self.surface = surface
     }
 }
 
 public struct SessionSummary: Identifiable, Sendable {
     public let id: String
+    public let sessionId: String
     public let lastUpdated: Date
     public let stepCount: Int
     public let inputTokens: Int
@@ -48,6 +52,7 @@ public struct SessionSummary: Identifiable, Sendable {
     public let totalTokens: Int
     public let estimatedCost: Double
     public let modelName: String?
+    public let surface: AppSurface
 
     public var cacheHitRatio: Double {
         let totalInput = inputTokens + cacheReadTokens
@@ -63,9 +68,11 @@ public struct SessionSummary: Identifiable, Sendable {
         cacheReadTokens: Int,
         outputTokens: Int,
         estimatedCost: Double,
-        modelName: String? = nil
+        modelName: String? = nil,
+        surface: AppSurface = .desktop
     ) {
-        self.id = id
+        self.id = "\(surface.rawValue):\(id)"
+        self.sessionId = id
         self.lastUpdated = lastUpdated
         self.stepCount = stepCount
         self.inputTokens = inputTokens
@@ -74,5 +81,6 @@ public struct SessionSummary: Identifiable, Sendable {
         self.totalTokens = inputTokens + cacheReadTokens + outputTokens
         self.estimatedCost = estimatedCost
         self.modelName = modelName
+        self.surface = surface
     }
 }

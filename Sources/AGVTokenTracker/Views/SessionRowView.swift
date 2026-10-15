@@ -11,12 +11,20 @@ public struct SessionRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 HStack(spacing: 5) {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                    Image(systemName: session.surface.iconName)
                         .font(.system(size: 10))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(session.surface.badgeColor)
 
-                    Text(shortSessionId(session.id))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    Text(session.surface.shortLabel)
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(session.surface.badgeColor.opacity(0.15))
+                        .foregroundColor(session.surface.badgeColor)
+                        .cornerRadius(3)
+
+                    Text(shortSessionId(session.sessionId))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(.primary)
                 }
 
@@ -28,6 +36,7 @@ public struct SessionRowView: View {
                         .background(Color.blue.opacity(0.12))
                         .foregroundColor(.blue)
                         .cornerRadius(4)
+                        .lineLimit(1)
                 }
 
                 Spacer()

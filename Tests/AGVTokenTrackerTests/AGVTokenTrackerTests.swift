@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SQLite3
 @testable import AGVTokenTracker
 
 @Suite("AGV Token Tracker Tests")
@@ -53,6 +54,18 @@ struct AGVTokenTrackerTests {
         #expect(claudeRate.inputPerMillion == 3.00)
     }
 
+    @Test("AppSurface properties and formatting")
+    func testAppSurfaceProperties() {
+        #expect(AppSurface.all.shortLabel == "All")
+        #expect(AppSurface.desktop.shortLabel == "2.0")
+        #expect(AppSurface.cli.shortLabel == "CLI")
+        #expect(AppSurface.ide.shortLabel == "IDE")
+
+        #expect(AppSurface.desktop.rawValue == "Antigravity 2.0")
+        #expect(AppSurface.cli.rawValue == "CLI")
+        #expect(AppSurface.ide.rawValue == "IDE")
+    }
+
     @Test("TranscriptScanner parsing synthetic JSONL")
     func testTranscriptParsing() throws {
         let sampleJSONL = """
@@ -67,7 +80,7 @@ struct AGVTokenTrackerTests {
         try sampleJSONL.write(to: tempFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempFile) }
 
-        let steps = TranscriptScanner.shared.parseTranscriptFile(fileURL: tempFile)
+        let steps = TranscriptScanner.shared.parseTranscriptFile(fileURL: tempFile, surface: .desktop)
 
         // Step #3 was duplicated in input; should only have 2 steps (#1 and #3)
         #expect(steps.count == 2)
@@ -79,5 +92,88 @@ struct AGVTokenTrackerTests {
         #expect(totalIn == 1500)
         #expect(totalCache == 2000)
         #expect(totalOut == 300)
+        #expect(steps.first?.surface == .desktop)
+    }
+
+    @Test("SQLiteConversationScanner parsing protobuf blobs")
+    func testSQLiteConversationScanner() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("test_sqlite_\(UUID().uuidString)")
+        let convDir = tempDir.appendingPathComponent("conversations")
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dbURL = convDir.appendingPathComponent("test-session-1.db")
+
+        // Build protobuf data:
+        // usage: field 2 = 1200 (in), field 5 = 800 (cache), field 9 = 400 (out), field 10 = 50 (thinking)
+        var usagePayload = Data()
+        usagePayload.append(encodeVarintField(fieldNumber: 2, value: 1200))
+        usagePayload.append(encodeVarintField(fieldNumber: 5, value: 800))
+        usagePayload.append(encodeVarintField(fieldNumber: 9, value: 400))
+        usagePayload.append(encodeVarintField(fieldNumber: 10, value: 50))
+        usagePayload.append(encodeLengthDelimited(fieldNumber: 11, data: "resp-abc".data(using: .utf8)!))
+
+        // chatModel: field 19 = "gemini-3.8-flash", field 4 = usagePayload
+        var chatModelPayload = Data()
+        chatModelPayload.append(encodeLengthDelimited(fieldNumber: 19, data: "gemini-3.8-flash".data(using: .utf8)!))
+        chatModelPayload.append(encodeLengthDelimited(fieldNumber: 4, data: usagePayload))
+
+        // top: field 1 = chatModelPayload
+        let topPayload = encodeLengthDelimited(fieldNumber: 1, data: chatModelPayload)
+
+        // Create SQLite DB
+        var db: OpaquePointer?
+        #expect(sqlite3_open(dbURL.path, &db) == SQLITE_OK)
+
+        let createTable = "CREATE TABLE gen_metadata (idx INTEGER, data BLOB);"
+        #expect(sqlite3_exec(db, createTable, nil, nil, nil) == SQLITE_OK)
+
+        var stmt: OpaquePointer?
+        let insertSQL = "INSERT INTO gen_metadata (idx, data) VALUES (1, ?);"
+        #expect(sqlite3_prepare_v2(db, insertSQL, -1, &stmt, nil) == SQLITE_OK)
+        _ = topPayload.withUnsafeBytes { rawBuffer in
+            sqlite3_bind_blob(stmt, 1, rawBuffer.baseAddress, Int32(topPayload.count), nil)
+        }
+        #expect(sqlite3_step(stmt) == SQLITE_DONE)
+        sqlite3_finalize(stmt)
+        sqlite3_close(db)
+
+        let (steps, sessions) = SQLiteConversationScanner.shared.scanDirectory(directoryURL: tempDir, surface: .ide)
+        #expect(sessions.count == 1)
+        #expect(steps.count == 1)
+
+        let step = steps[0]
+        #expect(step.inputTokens == 1200)
+        #expect(step.cacheReadTokens == 800)
+        #expect(step.outputTokens == 450) // 400 + 50 thinking
+        #expect(step.modelName == "gemini-3.8-flash")
+        #expect(step.surface == .ide)
+        #expect(sessions[0].surface == .ide)
+    }
+
+    // MARK: - Protobuf Encoding Helpers for Tests
+
+    private func encodeVarint(_ value: UInt64) -> Data {
+        var v = value
+        var data = Data()
+        while v >= 0x80 {
+            data.append(UInt8((v & 0x7F) | 0x80))
+            v >>= 7
+        }
+        data.append(UInt8(v & 0x7F))
+        return data
+    }
+
+    private func encodeLengthDelimited(fieldNumber: Int, data: Data) -> Data {
+        var result = encodeVarint(UInt64((fieldNumber << 3) | 2))
+        result.append(encodeVarint(UInt64(data.count)))
+        result.append(data)
+        return result
+    }
+
+    private func encodeVarintField(fieldNumber: Int, value: UInt64) -> Data {
+        var result = encodeVarint(UInt64((fieldNumber << 3) | 0))
+        result.append(encodeVarint(value))
+        return result
     }
 }
