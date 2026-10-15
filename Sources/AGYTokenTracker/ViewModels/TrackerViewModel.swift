@@ -10,17 +10,44 @@ public enum StatusDisplayMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public struct ComputedMetrics: Sendable {
+    public var inputTokens: Int = 0
+    public var cacheReadTokens: Int = 0
+    public var outputTokens: Int = 0
+    public var totalTokens: Int = 0
+    public var totalCost: Double = 0.0
+    public var cacheHitPercentage: Double = 0.0
+
+    public init(
+        inputTokens: Int = 0,
+        cacheReadTokens: Int = 0,
+        outputTokens: Int = 0,
+        totalTokens: Int = 0,
+        totalCost: Double = 0.0,
+        cacheHitPercentage: Double = 0.0
+    ) {
+        self.inputTokens = inputTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+        self.totalCost = totalCost
+        self.cacheHitPercentage = cacheHitPercentage
+    }
+}
+
 @MainActor
 public final class TrackerViewModel: ObservableObject {
     @Published public var selectedPeriod: TimePeriod = .today {
         didSet {
             UserDefaults.standard.set(selectedPeriod.rawValue, forKey: "agy_selected_period")
+            recomputeMetrics()
         }
     }
 
     @Published public var selectedSurface: AppSurface = .all {
         didSet {
             UserDefaults.standard.set(selectedSurface.rawValue, forKey: "agy_selected_surface")
+            recomputeMetrics()
         }
     }
 
@@ -42,6 +69,10 @@ public final class TrackerViewModel: ObservableObject {
     @Published public var isPulsing: Bool = false
     @Published public var lastRefreshDate: Date = Date()
     @Published public var pricingSyncDate: Date?
+
+    @Published public private(set) var currentMetrics = ComputedMetrics()
+    @Published public private(set) var filteredSessions: [SessionSummary] = []
+    @Published public private(set) var breakdownMap: [AppSurface: (tokens: Int, cost: Double, sessionsCount: Int)] = [:]
 
     private let unifiedScanner = UnifiedScanner.shared
     private let pricing = PricingService.shared
@@ -73,7 +104,7 @@ public final class TrackerViewModel: ObservableObject {
             await pricing.fetchRemotePricing()
             await MainActor.run {
                 self.pricingSyncDate = self.pricing.lastSyncDate
-                self.refresh()
+                self.recomputeMetrics()
             }
         }
     }
@@ -107,6 +138,7 @@ public final class TrackerViewModel: ObservableObject {
                 self.allSteps = steps
                 self.allSessions = sessions
                 self.lastRefreshDate = Date()
+                self.recomputeMetrics()
                 self.isScanning = false
             }
         }
@@ -119,76 +151,72 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Filtered Metrics
+    // MARK: - Fast Precomputed Metrics
 
-    public var filteredSteps: [TokenStep] {
-        allSteps.filter { step in
-            let surfaceMatch = (selectedSurface == .all || step.surface == selectedSurface)
-            let periodMatch = selectedPeriod.matches(date: step.date)
-            return surfaceMatch && periodMatch
-        }
-    }
+    public func recomputeMetrics() {
+        let interval = selectedPeriod.dateInterval()
+        let surface = selectedSurface
 
-    public var filteredSessions: [SessionSummary] {
-        allSessions.filter { session in
-            let surfaceMatch = (selectedSurface == .all || session.surface == selectedSurface)
-            let periodMatch = selectedPeriod.matches(date: session.lastUpdated)
-            return surfaceMatch && periodMatch
-        }
-    }
+        var inTok = 0
+        var cacheTok = 0
+        var outTok = 0
+        var cost = 0.0
 
-    public var totalInputTokens: Int {
-        filteredSteps.reduce(0) { $0 + $1.inputTokens }
-    }
+        for step in allSteps {
+            if surface != .all && step.surface != surface { continue }
+            if !selectedPeriod.matches(date: step.date, interval: interval) { continue }
 
-    public var totalCacheReadTokens: Int {
-        filteredSteps.reduce(0) { $0 + $1.cacheReadTokens }
-    }
+            inTok += step.inputTokens
+            cacheTok += step.cacheReadTokens
+            outTok += step.outputTokens
 
-    public var totalOutputTokens: Int {
-        filteredSteps.reduce(0) { $0 + $1.outputTokens }
-    }
-
-    public var totalTokens: Int {
-        totalInputTokens + totalCacheReadTokens + totalOutputTokens
-    }
-
-    public var totalCost: Double {
-        filteredSteps.reduce(0.0) { acc, step in
             let rate = pricing.rateFor(modelName: step.modelName)
-            return acc + rate.calculateCost(
-                input: step.inputTokens,
-                cacheRead: step.cacheReadTokens,
-                output: step.outputTokens
-            )
+            cost += rate.calculateCost(input: step.inputTokens, cacheRead: step.cacheReadTokens, output: step.outputTokens)
         }
+
+        let total = inTok + cacheTok + outTok
+        let prompt = inTok + cacheTok
+        let hitPct = prompt > 0 ? (Double(cacheTok) / Double(prompt)) * 100.0 : 0.0
+
+        self.currentMetrics = ComputedMetrics(
+            inputTokens: inTok,
+            cacheReadTokens: cacheTok,
+            outputTokens: outTok,
+            totalTokens: total,
+            totalCost: cost,
+            cacheHitPercentage: hitPct
+        )
+
+        self.filteredSessions = allSessions.filter { session in
+            let surfaceMatch = (surface == .all || session.surface == surface)
+            let periodMatch = selectedPeriod.matches(date: session.lastUpdated, interval: interval)
+            return surfaceMatch && periodMatch
+        }
+
+        var bMap: [AppSurface: (tokens: Int, cost: Double, sessionsCount: Int)] = [:]
+        for surf in [AppSurface.desktop, AppSurface.cli, AppSurface.ide] {
+            var sTok = 0
+            var sCost = 0.0
+            for step in allSteps where step.surface == surf && selectedPeriod.matches(date: step.date, interval: interval) {
+                sTok += step.totalTokens
+                let rate = pricing.rateFor(modelName: step.modelName)
+                sCost += rate.calculateCost(input: step.inputTokens, cacheRead: step.cacheReadTokens, output: step.outputTokens)
+            }
+            let sCount = allSessions.filter { $0.surface == surf && selectedPeriod.matches(date: $0.lastUpdated, interval: interval) }.count
+            bMap[surf] = (sTok, sCost, sCount)
+        }
+        self.breakdownMap = bMap
     }
 
-    public var cacheHitPercentage: Double {
-        let promptTokens = totalInputTokens + totalCacheReadTokens
-        guard promptTokens > 0 else { return 0 }
-        return (Double(totalCacheReadTokens) / Double(promptTokens)) * 100.0
-    }
+    public var totalInputTokens: Int { currentMetrics.inputTokens }
+    public var totalCacheReadTokens: Int { currentMetrics.cacheReadTokens }
+    public var totalOutputTokens: Int { currentMetrics.outputTokens }
+    public var totalTokens: Int { currentMetrics.totalTokens }
+    public var totalCost: Double { currentMetrics.totalCost }
+    public var cacheHitPercentage: Double { currentMetrics.cacheHitPercentage }
 
     public func surfaceMetrics(for surface: AppSurface) -> (tokens: Int, cost: Double, sessionsCount: Int) {
-        let periodSteps = allSteps.filter { step in
-            step.surface == surface && selectedPeriod.matches(date: step.date)
-        }
-        let periodSessions = allSessions.filter { session in
-            session.surface == surface && selectedPeriod.matches(date: session.lastUpdated)
-        }
-
-        let tokens = periodSteps.reduce(0) { $0 + $1.totalTokens }
-        let cost = periodSteps.reduce(0.0) { acc, step in
-            let rate = pricing.rateFor(modelName: step.modelName)
-            return acc + rate.calculateCost(
-                input: step.inputTokens,
-                cacheRead: step.cacheReadTokens,
-                output: step.outputTokens
-            )
-        }
-
-        return (tokens, cost, periodSessions.count)
+        breakdownMap[surface] ?? (0, 0.0, 0)
     }
 
     public var menuBarTitle: String {

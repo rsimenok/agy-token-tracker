@@ -1,8 +1,16 @@
 import Foundation
 import SQLite3
 
-public final class SQLiteConversationScanner: Sendable {
+public final class SQLiteConversationScanner: @unchecked Sendable {
     public static let shared = SQLiteConversationScanner()
+
+    private let lock = NSLock()
+    private struct CacheEntry {
+        let mtime: Date
+        let steps: [TokenStep]
+        let session: SessionSummary?
+    }
+    private var dbCache: [URL: CacheEntry] = [:]
 
     public init() {}
 
@@ -20,8 +28,26 @@ public final class SQLiteConversationScanner: Sendable {
         }
 
         for fileURL in files where fileURL.pathExtension == "db" {
+            let fileMtime = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+
+            lock.lock()
+            if let cached = dbCache[fileURL], cached.mtime == fileMtime {
+                lock.unlock()
+                if !cached.steps.isEmpty, let session = cached.session {
+                    allSteps.append(contentsOf: cached.steps)
+                    sessionSummaries.append(session)
+                }
+                continue
+            }
+            lock.unlock()
+
             let sessionId = fileURL.deletingPathExtension().lastPathComponent
             let (steps, session) = parseDatabase(fileURL: fileURL, sessionId: sessionId, surface: surface)
+
+            lock.lock()
+            dbCache[fileURL] = CacheEntry(mtime: fileMtime, steps: steps, session: session)
+            lock.unlock()
+
             if !steps.isEmpty, let session = session {
                 allSteps.append(contentsOf: steps)
                 sessionSummaries.append(session)
@@ -36,7 +62,6 @@ public final class SQLiteConversationScanner: Sendable {
 
     private func parseDatabase(fileURL: URL, sessionId: String, surface: AppSurface) -> (steps: [TokenStep], session: SessionSummary?) {
         var db: OpaquePointer?
-        // Open readonly
         if sqlite3_open_v2(fileURL.path, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             sqlite3_close(db)
             return ([], nil)

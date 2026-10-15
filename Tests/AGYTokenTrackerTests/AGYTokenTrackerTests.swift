@@ -44,7 +44,7 @@ struct AGYTokenTrackerTests {
         let pricing = PricingService.shared
 
         let flashRate = pricing.rateFor(modelName: "gemini-3.8-flash")
-        #expect(flashRate.inputPerMillion == 0.15)
+        #expect(flashRate.inputPerMillion == 0.75)
 
         let proRate = pricing.rateFor(modelName: "gemini-1.5-pro")
         #expect(proRate.inputPerMillion == 1.25)

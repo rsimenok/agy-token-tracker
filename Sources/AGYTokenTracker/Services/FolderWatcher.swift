@@ -8,7 +8,7 @@ public final class FolderWatcher: @unchecked Sendable {
 
     private var onChange: (@Sendable () -> Void)?
     private var lastEventTime = Date.distantPast
-    private let debounceInterval: TimeInterval = 0.8
+    private let debounceInterval: TimeInterval = 1.2
 
     public init() {}
 
@@ -41,9 +41,9 @@ public final class FolderWatcher: @unchecked Sendable {
             }
         }
 
-        // Auxiliary Polling Timer on main thread every 4 seconds
+        // Low-frequency background fallback check every 30 seconds (no main-thread hammering)
         DispatchQueue.main.async { [weak self] in
-            self?.timer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            self?.timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
                 self?.handleTrigger()
             }
         }

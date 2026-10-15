@@ -16,6 +16,13 @@ public final class TranscriptScanner: @unchecked Sendable {
         return formatter
     }()
 
+    private struct CacheEntry {
+        let mtime: Date
+        let steps: [TokenStep]
+        let summary: SessionSummary?
+    }
+    private var fileCache: [URL: CacheEntry] = [:]
+
     public init() {}
 
     private func parseDate(_ dateString: String) -> Date? {
@@ -41,15 +48,29 @@ public final class TranscriptScanner: @unchecked Sendable {
         var allSteps: [TokenStep] = []
         var sessionSummaries: [SessionSummary] = []
 
-        // Find all transcript.jsonl files
         let transcriptFiles = findTranscriptFiles(in: targetURL)
 
         for fileURL in transcriptFiles {
+            let fileMtime = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+
+            lock.lock()
+            if let cached = fileCache[fileURL], cached.mtime == fileMtime {
+                lock.unlock()
+                if !cached.steps.isEmpty {
+                    allSteps.append(contentsOf: cached.steps)
+                    if let summary = cached.summary {
+                        sessionSummaries.append(summary)
+                    }
+                }
+                continue
+            }
+            lock.unlock()
+
             let sessionSteps = parseTranscriptFile(fileURL: fileURL, surface: surface)
+            var sessionSummary: SessionSummary? = nil
             if !sessionSteps.isEmpty {
                 allSteps.append(contentsOf: sessionSteps)
 
-                // Build session summary
                 let sessionId = extractSessionId(from: fileURL)
                 let latestDate = sessionSteps.map(\.date).max() ?? Date()
                 let totalInput = sessionSteps.reduce(0) { $0 + $1.inputTokens }
@@ -60,7 +81,7 @@ public final class TranscriptScanner: @unchecked Sendable {
                 let rate = PricingService.shared.rateFor(modelName: detectedModel)
                 let cost = rate.calculateCost(input: totalInput, cacheRead: totalCache, output: totalOutput)
 
-                sessionSummaries.append(SessionSummary(
+                let summary = SessionSummary(
                     id: sessionId,
                     lastUpdated: latestDate,
                     stepCount: sessionSteps.count,
@@ -70,8 +91,14 @@ public final class TranscriptScanner: @unchecked Sendable {
                     estimatedCost: cost,
                     modelName: detectedModel,
                     surface: surface
-                ))
+                )
+                sessionSummaries.append(summary)
+                sessionSummary = summary
             }
+
+            lock.lock()
+            fileCache[fileURL] = CacheEntry(mtime: fileMtime, steps: sessionSteps, summary: sessionSummary)
+            lock.unlock()
         }
 
         sessionSummaries.sort { $0.lastUpdated > $1.lastUpdated }
@@ -83,8 +110,6 @@ public final class TranscriptScanner: @unchecked Sendable {
     private func findTranscriptFiles(in rootURL: URL) -> [URL] {
         var results: [URL] = []
 
-        // Also explicitly inspect .system_generated inside conversation folders because .skipsHiddenFiles might skip dot-folders
-        // So we manually list top-level conversation folders first:
         if let conversationFolders = try? FileManager.default.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: [.isDirectoryKey]) {
             for folder in conversationFolders {
                 let primaryTranscript = folder
@@ -93,7 +118,6 @@ public final class TranscriptScanner: @unchecked Sendable {
                     results.append(primaryTranscript)
                 }
 
-                // Check for any subagents subfolder inside
                 let subagentsDir = folder.appendingPathComponent("subagents")
                 if let subagentFolders = try? FileManager.default.contentsOfDirectory(at: subagentsDir, includingPropertiesForKeys: nil) {
                     for subFolder in subagentFolders {
@@ -124,19 +148,22 @@ public final class TranscriptScanner: @unchecked Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
 
+            let hasPlanner = trimmed.contains("\"PLANNER_RESPONSE\"")
+            let hasModel = trimmed.contains("Model Selection")
+            guard hasPlanner || hasModel else { return }
+
             guard let jsonData = trimmed.data(using: .utf8),
                   let obj = (try? JSONSerialization.jsonObject(with: jsonData)) as? [String: Any] else {
                 return
             }
 
-            // Detect model selection changes or metadata
-            if let userSettings = obj["content"] as? String, userSettings.contains("Model Selection") {
+            if hasModel, let userSettings = obj["content"] as? String, userSettings.contains("Model Selection") {
                 if let match = self.extractModelFromContent(userSettings) {
                     currentSessionModel = match
                 }
             }
 
-            guard let type = obj["type"] as? String, type == "PLANNER_RESPONSE" else {
+            guard hasPlanner, let type = obj["type"] as? String, type == "PLANNER_RESPONSE" else {
                 return
             }
 
@@ -170,7 +197,6 @@ public final class TranscriptScanner: @unchecked Sendable {
     }
 
     private func extractSessionId(from fileURL: URL) -> String {
-        // Path pattern: .../brain/<conversation-id>/.system_generated/logs/transcript.jsonl
         let components = fileURL.pathComponents
         if let logsIdx = components.lastIndex(of: "logs"), logsIdx >= 2 {
             return components[logsIdx - 2]
@@ -179,7 +205,6 @@ public final class TranscriptScanner: @unchecked Sendable {
     }
 
     private func extractModelFromContent(_ text: String) -> String? {
-        // e.g. "Model Selection` from None to Gemini 3.8 Flash (High)"
         guard let range = text.range(of: "Model Selection` from") else { return nil }
         let after = text[range.upperBound...]
         if let toRange = after.range(of: "to ") {

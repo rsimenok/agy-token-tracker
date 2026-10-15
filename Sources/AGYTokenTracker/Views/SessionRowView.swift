@@ -89,9 +89,13 @@ public struct SessionRowView: View {
         return id
     }
 
-    private func relativeDateString(for date: Date) -> String {
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter
+    }()
+
+    private func relativeDateString(for date: Date) -> String {
+        Self.relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }

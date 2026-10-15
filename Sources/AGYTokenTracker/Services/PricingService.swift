@@ -25,7 +25,7 @@ public final class PricingService: @unchecked Sendable {
         // Official rates per 1M tokens ($/1M)
         let defaults: [String: ModelRate] = [
             // Gemini Flash family (Standard Antigravity default models)
-            "gemini-3.8-flash": ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60),
+            "gemini-3.8-flash": ModelRate(inputPerMillion: 0.75, cacheReadPerMillion: 0.1875, outputPerMillion: 3.00),
             "gemini-3-flash": ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60),
             "gemini-2.5-flash": ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60),
             "gemini-2.0-flash": ModelRate(inputPerMillion: 0.10, cacheReadPerMillion: 0.0250, outputPerMillion: 0.40),
@@ -68,16 +68,25 @@ public final class PricingService: @unchecked Sendable {
             return rates["gemini-2.5-flash"] ?? ModelRate(inputPerMillion: 0.15, cacheReadPerMillion: 0.0375, outputPerMillion: 0.60)
         }
 
-        // Exact match
-        if let direct = rates[rawName] {
+        let cleaned = rawName.components(separatedBy: "(").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? rawName
+
+        // 1. Exact match
+        if let direct = rates[rawName] ?? rates[cleaned] {
             return direct
         }
 
-        // Substring / fuzzy match
+        // 2. Longest matching key (most specific match)
+        var bestMatch: (key: String, rate: ModelRate)?
         for (key, rate) in rates {
-            if rawName.contains(key) || key.contains(rawName) {
-                return rate
+            if rawName.contains(key) || cleaned.contains(key) {
+                if bestMatch == nil || key.count > bestMatch!.key.count {
+                    bestMatch = (key, rate)
+                }
             }
+        }
+
+        if let best = bestMatch {
+            return best.rate
         }
 
         if rawName.contains("pro") {

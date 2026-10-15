@@ -9,21 +9,35 @@ public enum TimePeriod: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
-    public func matches(date: Date, calendar: Calendar = .current) -> Bool {
-        let now = Date()
+    public func dateInterval(now: Date = Date(), calendar: Calendar = .current) -> DateInterval? {
         switch self {
         case .today:
-            return calendar.isDateInToday(date)
+            let start = calendar.startOfDay(for: now)
+            guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }
+            return DateInterval(start: start, end: end)
         case .yesterday:
-            return calendar.isDateInYesterday(date)
+            let todayStart = calendar.startOfDay(for: now)
+            guard let start = calendar.date(byAdding: .day, value: -1, to: todayStart) else { return nil }
+            return DateInterval(start: start, end: todayStart)
         case .thisWeek:
-            return calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) &&
-                   calendar.isDate(date, equalTo: now, toGranularity: .yearForWeekOfYear)
+            guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: now) else { return nil }
+            return weekInterval
         case .thisMonth:
-            return calendar.isDate(date, equalTo: now, toGranularity: .month) &&
-                   calendar.isDate(date, equalTo: now, toGranularity: .year)
+            guard let monthInterval = calendar.dateInterval(of: .month, for: now) else { return nil }
+            return monthInterval
         case .allTime:
-            return true
+            return nil
         }
+    }
+
+    @inline(__always)
+    public func matches(date: Date, interval: DateInterval?) -> Bool {
+        guard let interval = interval else { return true }
+        return date >= interval.start && date < interval.end
+    }
+
+    public func matches(date: Date, calendar: Calendar = .current) -> Bool {
+        let interval = dateInterval(calendar: calendar)
+        return matches(date: date, interval: interval)
     }
 }
