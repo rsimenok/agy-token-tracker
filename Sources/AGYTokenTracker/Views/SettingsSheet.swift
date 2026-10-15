@@ -149,7 +149,7 @@ public struct SettingsSheet: View {
 
             // Footer / Actions
             HStack {
-                Text("AGVTokenTracker v1.0.0")
+                Text("AGYTokenTracker v1.0.0")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 

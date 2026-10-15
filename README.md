@@ -1,4 +1,4 @@
-# AGV Token Tracker (Antigravity Unified Menu Bar Monitor) ⚡️
+# AGY Token Tracker (Antigravity Unified Menu Bar Monitor) ⚡️
 
 Нативний macOS додаток для статус-бару (Menu Bar), аналогічний до Syrtis / TokenBar, спеціально розроблений для моніторингу використання токенів та витрат в усій екосистемі **Antigravity**:
 1. **Antigravity 2.0 (Desktop)**
@@ -14,7 +14,7 @@
   - 🌐 **All (Unified)**: Загальний підсумок по всій екосистемі з інтерактивними картками розбивки по кожному додатку.
   - 🖥️ **2.0 (Desktop)**: Відстеження окремо для десктопного Antigravity 2.0 (`~/.gemini/antigravity/brain/**/transcript.jsonl`).
   - 💻 **CLI (`agy`)**: Відстеження консольних сесій CLI (`~/.gemini/antigravity-cli`).
-  - 📝 **IDE**: Відстеження IDE розширень (`~/.gemini/antigravity-ide/conversations/*.db`).
+  - 📝 **IDE**: Відстеження IDE розширень (`~/.gemini/antigravity-ide/conversations/*.db` та `brain`).
 - **Гнучкі часові періоди**:
   - **Сьогодні (Today)**
   - **Вчора (Yesterday)**
@@ -58,13 +58,13 @@ swift test
 ```bash
 ./scripts/build_app.sh
 ```
-Після виконання скрипта готовий додаток буде збережено в `build/AGVTokenTracker.app`. Ви можете запустити його:
+Після виконання скрипта готовий додаток буде збережено в `build/AGYTokenTracker.app`. Ви можете запустити його:
 ```bash
-open build/AGVTokenTracker.app
+open build/AGYTokenTracker.app
 ```
 або скопіювати у папку програм:
 ```bash
-cp -r build/AGVTokenTracker.app /Applications/
+cp -r build/AGYTokenTracker.app /Applications/
 ```
 
 ---
@@ -72,8 +72,8 @@ cp -r build/AGVTokenTracker.app /Applications/
 ## 📂 Архітектура проекту
 
 ```text
-Sources/AGVTokenTracker/
-├── AGVTokenTracker.swift              # Точка входу (@main) з MenuBarExtra (.window)
+Sources/AGYTokenTracker/
+├── AGYTokenTracker.swift              # Точка входу (@main) з MenuBarExtra (.window)
 ├── Models/
 │   ├── AppSurface.swift               # Перелік поверхонь (.all, .desktop, .cli, .ide)
 │   ├── TokenStep.swift                # Модель окремого кроку та SessionSummary

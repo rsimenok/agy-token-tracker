@@ -46,11 +46,19 @@ public final class UnifiedScanner: Sendable {
 
         // 3. Antigravity IDE
         let ideHome = home.appendingPathComponent(".gemini/antigravity-ide", isDirectory: true)
-        let (ideSteps, ideSessions) = sqliteScanner.scanDirectory(directoryURL: ideHome, surface: .ide)
+        let ideBrain = ideHome.appendingPathComponent("brain", isDirectory: true)
+        let (ideTranscriptSteps, ideTranscriptSessions) = transcriptScanner.scanAll(brainURL: ideBrain, surface: .ide)
+        for s in ideTranscriptSessions {
+            seenSessionKeys.insert("ide:\(s.sessionId)")
+        }
+        allSteps.append(contentsOf: ideTranscriptSteps)
+        allSessions.append(contentsOf: ideTranscriptSessions)
+
+        let (ideDbSteps, ideSessions) = sqliteScanner.scanDirectory(directoryURL: ideHome, surface: .ide)
         for s in ideSessions where !seenSessionKeys.contains("ide:\(s.sessionId)") {
             seenSessionKeys.insert("ide:\(s.sessionId)")
             allSessions.append(s)
-            let matchingSteps = ideSteps.filter { $0.sessionId == s.sessionId }
+            let matchingSteps = ideDbSteps.filter { $0.sessionId == s.sessionId }
             allSteps.append(contentsOf: matchingSteps)
         }
 

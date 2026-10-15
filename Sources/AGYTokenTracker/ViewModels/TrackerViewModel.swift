@@ -14,25 +14,25 @@ public enum StatusDisplayMode: String, CaseIterable, Identifiable {
 public final class TrackerViewModel: ObservableObject {
     @Published public var selectedPeriod: TimePeriod = .today {
         didSet {
-            UserDefaults.standard.set(selectedPeriod.rawValue, forKey: "agv_selected_period")
+            UserDefaults.standard.set(selectedPeriod.rawValue, forKey: "agy_selected_period")
         }
     }
 
     @Published public var selectedSurface: AppSurface = .all {
         didSet {
-            UserDefaults.standard.set(selectedSurface.rawValue, forKey: "agv_selected_surface")
+            UserDefaults.standard.set(selectedSurface.rawValue, forKey: "agy_selected_surface")
         }
     }
 
     @Published public var displayMode: StatusDisplayMode = .tokens {
         didSet {
-            UserDefaults.standard.set(displayMode.rawValue, forKey: "agv_display_mode")
+            UserDefaults.standard.set(displayMode.rawValue, forKey: "agy_display_mode")
         }
     }
 
     @Published public var customBrainPath: String = "" {
         didSet {
-            UserDefaults.standard.set(customBrainPath, forKey: "agv_custom_brain_path")
+            UserDefaults.standard.set(customBrainPath, forKey: "agy_custom_brain_path")
         }
     }
 
@@ -48,22 +48,22 @@ public final class TrackerViewModel: ObservableObject {
     private let watcher = FolderWatcher()
 
     public init() {
-        if let savedPeriod = UserDefaults.standard.string(forKey: "agv_selected_period"),
+        if let savedPeriod = UserDefaults.standard.string(forKey: "agy_selected_period") ?? UserDefaults.standard.string(forKey: "agv_selected_period"),
            let period = TimePeriod(rawValue: savedPeriod) {
             self.selectedPeriod = period
         }
 
-        if let savedSurface = UserDefaults.standard.string(forKey: "agv_selected_surface"),
+        if let savedSurface = UserDefaults.standard.string(forKey: "agy_selected_surface") ?? UserDefaults.standard.string(forKey: "agv_selected_surface"),
            let surface = AppSurface(rawValue: savedSurface) {
             self.selectedSurface = surface
         }
 
-        if let savedMode = UserDefaults.standard.string(forKey: "agv_display_mode"),
+        if let savedMode = UserDefaults.standard.string(forKey: "agy_display_mode") ?? UserDefaults.standard.string(forKey: "agv_display_mode"),
            let mode = StatusDisplayMode(rawValue: savedMode) {
             self.displayMode = mode
         }
 
-        self.customBrainPath = UserDefaults.standard.string(forKey: "agv_custom_brain_path") ?? ""
+        self.customBrainPath = UserDefaults.standard.string(forKey: "agy_custom_brain_path") ?? UserDefaults.standard.string(forKey: "agv_custom_brain_path") ?? ""
         self.pricingSyncDate = pricing.lastSyncDate
 
         refresh()

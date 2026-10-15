@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Script to build standalone AGVTokenTracker.app for macOS
+# Script to build standalone AGYTokenTracker.app for macOS
 
-APP_NAME="AGVTokenTracker"
+APP_NAME="AGYTokenTracker"
 BUNDLE_DIR="build/${APP_NAME}.app"
 CONTENTS_DIR="${BUNDLE_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -28,11 +28,11 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key>
-    <string>com.antigravity.AGVTokenTracker</string>
+    <string>com.antigravity.AGYTokenTracker</string>
     <key>CFBundleName</key>
-    <string>AGV Token Tracker</string>
+    <string>AGY Token Tracker</string>
     <key>CFBundleDisplayName</key>
-    <string>AGV Token Tracker</string>
+    <string>AGY Token Tracker</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

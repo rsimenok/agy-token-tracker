@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct AGVTokenTrackerApp: App {
+struct AGYTokenTrackerApp: App {
     @StateObject private var tracker = TrackerViewModel()
 
     init() {
