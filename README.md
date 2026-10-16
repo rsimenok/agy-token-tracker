@@ -12,6 +12,20 @@
 
 Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthetic, it lives quietly in your menu bar (`LSUIElement`, no Dock icon clutter) and updates automatically in the background.
 
+<p align="center">
+  <img src="assets/menubar_icon.png" width="150" alt="Menu Bar Item" />
+</p>
+
+---
+
+## 📸 Screenshots
+
+| Overview (Tokens & Cost) | Models Analytics & Quotas |
+| :---: | :---: |
+| <img src="assets/dashboard.png" width="370" alt="Overview Dashboard" /> | <img src="assets/models.png" width="370" alt="Models Analytics & Quotas" /> |
+| **Sessions History** | **Settings & Preferences** |
+| <img src="assets/sessions.png" width="370" alt="Sessions History" /> | <img src="assets/settings.png" width="370" alt="Settings Sheet" /> |
+
 ---
 
 ## ✨ Features
