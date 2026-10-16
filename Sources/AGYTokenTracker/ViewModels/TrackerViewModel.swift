@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import Combine
 
 public enum StatusDisplayMode: String, CaseIterable, Identifiable {
@@ -104,7 +105,14 @@ public final class TrackerViewModel: ObservableObject {
     private let watcher = FolderWatcher()
     private let quotaService = QuotaService.shared
 
-    public init() {
+    private var cancellables = Set<AnyCancellable>()
+    private var lastComputedDayStart: Date = Calendar.current.startOfDay(for: Date())
+    private var lastQuotaFetchDate: Date?
+    private let quotaRefreshCooldown: TimeInterval = 60.0
+    private var lastWindowOpenRefreshDate: Date = .distantPast
+    private var pendingRefresh: Bool = false
+
+    public init(startBackgroundServices: Bool = true) {
         if let savedPeriod = UserDefaults.standard.string(forKey: "agy_selected_period") ?? UserDefaults.standard.string(forKey: "agv_selected_period"),
            let period = TimePeriod(rawValue: savedPeriod) {
             self.selectedPeriod = period
@@ -124,9 +132,11 @@ public final class TrackerViewModel: ObservableObject {
         self.pricingSyncDate = pricing.lastSyncDate
         self.quotaSnapshot = quotaService.currentSnapshot
 
-        refresh()
-        refreshQuota()
+        guard startBackgroundServices else { return }
+
+        refresh(forceQuota: true)
         startWatcher()
+        setupLifecycleObservers()
 
         Task {
             await pricing.fetchRemotePricing()
@@ -135,6 +145,49 @@ public final class TrackerViewModel: ObservableObject {
                 self.recomputeMetrics()
             }
         }
+    }
+
+    private func setupLifecycleObservers() {
+        let dayChanged = NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+            .map { _ in () }
+        let clockChanged = NotificationCenter.default.publisher(for: .NSSystemClockDidChange)
+            .map { _ in () }
+        let timeZoneChanged = NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)
+            .map { _ in () }
+        let systemWoke = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .map { _ in () }
+
+        Publishers.Merge4(dayChanged, clockChanged, timeZoneChanged, systemWoke)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                guard let self = self else { return }
+                self.recomputeMetrics()
+                self.refresh()
+            }
+            .store(in: &cancellables)
+
+        // Periodic 60-second check to ensure menu bar metrics roll over at midnight even while idle
+        Timer.publish(every: 60.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] now in
+                guard let self = self else { return }
+                if !Calendar.current.isDate(now, inSameDayAs: self.lastComputedDayStart) {
+                    self.recomputeMetrics(now: now)
+                    self.refresh()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Triggered when the MenuBarExtra popup window opens or becomes key.
+    public func handleWindowOpened() {
+        let now = Date()
+        if !Calendar.current.isDate(now, inSameDayAs: lastComputedDayStart) {
+            recomputeMetrics(now: now)
+        }
+        guard now.timeIntervalSince(lastWindowOpenRefreshDate) >= 1.5 else { return }
+        lastWindowOpenRefreshDate = now
+        refresh()
     }
 
     public func startWatcher() {
@@ -158,12 +211,22 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
-    public func refresh() {
-        guard !isScanning else { return }
+    public func refresh(forceQuota: Bool = false) {
+        let now = Date()
+        if !Calendar.current.isDate(now, inSameDayAs: lastComputedDayStart) {
+            recomputeMetrics(now: now)
+        }
+
+        refreshQuota(force: forceQuota)
+
+        guard !isScanning else {
+            pendingRefresh = true
+            return
+        }
         isScanning = true
+        pendingRefresh = false
         let customPath = customBrainPath.isEmpty ? nil : customBrainPath
 
-        refreshQuota()
         Task.detached(priority: .userInitiated) { [unifiedScanner] in
             let (steps, sessions) = unifiedScanner.scanAllSurfaces(customDesktopBrainPath: customPath)
             await MainActor.run {
@@ -172,13 +235,22 @@ public final class TrackerViewModel: ObservableObject {
                 self.lastRefreshDate = Date()
                 self.recomputeMetrics()
                 self.isScanning = false
+                if self.pendingRefresh {
+                    self.pendingRefresh = false
+                    self.refresh()
+                }
             }
         }
     }
 
-    public func refreshQuota() {
+    public func refreshQuota(force: Bool = false) {
         guard !isFetchingQuota else { return }
+        let now = Date()
+        if !force, let lastFetch = lastQuotaFetchDate, now.timeIntervalSince(lastFetch) < quotaRefreshCooldown {
+            return
+        }
         isFetchingQuota = true
+        lastQuotaFetchDate = now
 
         Task { [weak self] in
             guard let self = self else { return }
@@ -200,8 +272,9 @@ public final class TrackerViewModel: ObservableObject {
 
     // MARK: - Fast Precomputed Metrics (Single Pass, Zero Blocking)
 
-    public func recomputeMetrics() {
-        let interval = selectedPeriod.dateInterval()
+    public func recomputeMetrics(now: Date = Date(), calendar: Calendar = .current) {
+        lastComputedDayStart = calendar.startOfDay(for: now)
+        let interval = selectedPeriod.dateInterval(now: now, calendar: calendar)
         let surface = selectedSurface
 
         var inTok = 0
@@ -352,8 +425,13 @@ public final class TrackerViewModel: ObservableObject {
         ]
     }
 
-    public func recomputeFilteredSessions() {
-        let interval = selectedPeriod.dateInterval()
+    public func recomputeFilteredSessions(now: Date = Date(), calendar: Calendar = .current) {
+        if !calendar.isDate(now, inSameDayAs: lastComputedDayStart) {
+            recomputeMetrics(now: now, calendar: calendar)
+            return
+        }
+
+        let interval = selectedPeriod.dateInterval(now: now, calendar: calendar)
         let surface = selectedSurface
 
         self.filteredSessions = allSessions.filter { session in

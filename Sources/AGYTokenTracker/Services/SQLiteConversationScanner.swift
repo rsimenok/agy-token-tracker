@@ -28,7 +28,7 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
         }
 
         for fileURL in files where fileURL.pathExtension == "db" {
-            let fileMtime = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+            let fileMtime = effectiveModificationDate(for: fileURL)
 
             lock.lock()
             if let cached = dbCache[fileURL], cached.mtime == fileMtime {
@@ -42,7 +42,7 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
             lock.unlock()
 
             let sessionId = fileURL.deletingPathExtension().lastPathComponent
-            let (steps, session) = parseDatabase(fileURL: fileURL, sessionId: sessionId, surface: surface)
+            let (steps, session) = parseDatabase(fileURL: fileURL, sessionId: sessionId, fileMtime: fileMtime, surface: surface)
 
             lock.lock()
             dbCache[fileURL] = CacheEntry(mtime: fileMtime, steps: steps, session: session)
@@ -60,7 +60,18 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
         return (allSteps, sessionSummaries)
     }
 
-    private func parseDatabase(fileURL: URL, sessionId: String, surface: AppSurface) -> (steps: [TokenStep], session: SessionSummary?) {
+    private func effectiveModificationDate(for dbURL: URL) -> Date {
+        let fm = FileManager.default
+        let dbMtime = (try? fm.attributesOfItem(atPath: dbURL.path)[.modificationDate] as? Date) ?? Date()
+        let walPath = dbURL.path + "-wal"
+        if let walMtime = try? fm.attributesOfItem(atPath: walPath)[.modificationDate] as? Date,
+           walMtime > dbMtime {
+            return walMtime
+        }
+        return dbMtime
+    }
+
+    private func parseDatabase(fileURL: URL, sessionId: String, fileMtime: Date, surface: AppSurface) -> (steps: [TokenStep], session: SessionSummary?) {
         var db: OpaquePointer?
         if sqlite3_open_v2(fileURL.path, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             sqlite3_close(db)
@@ -68,8 +79,12 @@ public final class SQLiteConversationScanner: @unchecked Sendable {
         }
         defer { sqlite3_close(db) }
 
-        let fileMtime = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
-        let sessionDate = readSessionDate(db: db) ?? fileMtime
+        let sessionDate: Date
+        if let metaDate = readSessionDate(db: db) {
+            sessionDate = max(metaDate, fileMtime)
+        } else {
+            sessionDate = fileMtime
+        }
 
         let query = "SELECT idx, data FROM gen_metadata ORDER BY idx"
         var stmt: OpaquePointer?

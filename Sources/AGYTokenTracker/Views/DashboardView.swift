@@ -30,6 +30,12 @@ public struct DashboardView: View {
         }
         .frame(width: 380, height: 620)
         .animation(.easeInOut(duration: 0.18), value: tracker.isShowingSettings)
+        .onAppear {
+            tracker.handleWindowOpened()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            tracker.handleWindowOpened()
+        }
     }
 
     @ViewBuilder
@@ -87,7 +93,7 @@ public struct DashboardView: View {
                             .scaleEffect(0.6)
                             .frame(width: 16, height: 16)
                     } else {
-                        Button(action: { tracker.refresh() }) {
+                        Button(action: { tracker.refresh(forceQuota: true) }) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)

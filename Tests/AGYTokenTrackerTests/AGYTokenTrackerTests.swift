@@ -203,7 +203,7 @@ struct AGYTokenTrackerTests {
     @Test("TrackerViewModel model usage computation and filtering")
     @MainActor
     func testModelUsagesAggregation() {
-        let vm = TrackerViewModel()
+        let vm = TrackerViewModel(startBackgroundServices: false)
         let now = Date()
 
         let step1 = TokenStep(
@@ -351,6 +351,77 @@ struct AGYTokenTrackerTests {
         let claude = snapshot.group(for: "Claude 3.5 Sonnet")
         #expect(claude != nil)
         #expect(claude?.weeklyBucket?.remainingPercent == 20.0)
+    }
+
+    @Test("TrackerViewModel day rollover updates Today metrics immediately")
+    @MainActor
+    func testDayRolloverRecomputeMetrics() throws {
+        let vm = TrackerViewModel(startBackgroundServices: false)
+        let calendar = Calendar.current
+        let today = Date()
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+
+        vm.selectedPeriod = .today
+        vm.selectedSurface = .all
+        vm.allSteps = [
+            TokenStep(
+                stepIndex: 1,
+                sessionId: "yesterday-session",
+                date: yesterday,
+                inputTokens: 1500,
+                cacheReadTokens: 500,
+                outputTokens: 300,
+                cost: 0.05,
+                modelName: "gemini-3.8-flash",
+                surface: .desktop
+            )
+        ]
+        vm.allSessions = [
+            SessionSummary(
+                id: "yesterday-session",
+                lastUpdated: yesterday,
+                stepCount: 1,
+                inputTokens: 1500,
+                cacheReadTokens: 500,
+                outputTokens: 300,
+                estimatedCost: 0.05,
+                modelName: "gemini-3.8-flash",
+                surface: .desktop
+            )
+        ]
+
+        // When evaluated on yesterday, yesterday's step is part of "Today"
+        vm.recomputeMetrics(now: yesterday, calendar: calendar)
+        #expect(vm.totalTokens == 2300)
+        #expect(vm.filteredSessions.count == 1)
+
+        // When day rolls over to today, recomputing metrics for "Today" drops yesterday's step
+        vm.recomputeMetrics(now: today, calendar: calendar)
+        #expect(vm.totalTokens == 0)
+        #expect(vm.filteredSessions.isEmpty)
+    }
+
+    @Test("FolderWatcher detects nested transcript.jsonl and subagent modification timestamps")
+    func testFolderWatcherNestedModificationDetection() throws {
+        let fm = FileManager.default
+        let rootDir = fm.temporaryDirectory.appendingPathComponent("test_watcher_\(UUID().uuidString)", isDirectory: true)
+        let sessionLogsDir = rootDir
+            .appendingPathComponent("session-1", isDirectory: true)
+            .appendingPathComponent(".system_generated/logs", isDirectory: true)
+        try fm.createDirectory(at: sessionLogsDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: rootDir) }
+
+        let initialLatest = FolderWatcher.latestRelevantModificationDate(in: [rootDir])
+        #expect(initialLatest > Date.distantPast)
+
+        let transcriptURL = sessionLogsDir.appendingPathComponent("transcript.jsonl")
+        try "{\"step_index\":1}\n".write(to: transcriptURL, atomically: true, encoding: .utf8)
+
+        let futureDate = Date().addingTimeInterval(120)
+        try fm.setAttributes([.modificationDate: futureDate], ofItemAtPath: transcriptURL.path)
+
+        let updatedLatest = FolderWatcher.latestRelevantModificationDate(in: [rootDir])
+        #expect(abs(updatedLatest.timeIntervalSince(futureDate)) < 1.0)
     }
 
     // MARK: - Protobuf Encoding Helpers for Tests

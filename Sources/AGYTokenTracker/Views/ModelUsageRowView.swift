@@ -273,7 +273,7 @@ public struct ModelLimitsSectionView: View {
                         .scaleEffect(0.5)
                         .frame(width: 14, height: 14)
                 } else {
-                    Button(action: { tracker.refreshQuota() }) {
+                    Button(action: { tracker.refreshQuota(force: true) }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
@@ -406,8 +406,8 @@ public struct QuotaBucketRowView: View {
 
                 Spacer()
 
-                if let raw = bucket.rawResetTime, let formatted = formatResetDate(raw) {
-                    Text(formatted)
+                if let resetTime = bucket.resetTime {
+                    Text(Self.resetDateFormatter.string(from: resetTime))
                         .font(.system(size: 8))
                         .foregroundColor(.secondary.opacity(0.6))
                 }
@@ -415,14 +415,11 @@ public struct QuotaBucketRowView: View {
         }
     }
 
-    private func formatResetDate(_ raw: String) -> String? {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime]
-        guard let date = iso.date(from: raw) else { return nil }
+    private static let resetDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM d, HH:mm"
-        return f.string(from: date)
-    }
+        return f
+    }()
 }
 
 public struct ModelDistributionBar: View {
