@@ -51,7 +51,7 @@ Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthe
 
 ### 💳 Real-Time Cost Estimation ($ USD)
 - **Dynamic Pricing Engine**: Automatically downloads and caches the latest model pricing from the open [LiteLLM catalog](https://github.com/BerriAI/litellm) (`model_prices_and_context_window.json`).
-- **Comprehensive Offline Fallbacks**: Built-in pricing tables covering the entire **Gemini 3.8/2.5/2.0/1.5** family (Flash, Pro, Flash-Lite), **Claude 3.7 / 3.5**, and other major models.
+- **Comprehensive Offline Fallbacks**: Built-in pricing tables covering the latest **Gemini 4 / 3.8** family (Flash, Pro, etc.), **Claude 5.5 / 3.7**, and other major models.
 
 ### ⏱️ Live Quotas & Limits Monitoring
 - **Real-time Quota Fetching**: Queries `agy --print /usage --output-format json` asynchronously with safe fallback parsing.
