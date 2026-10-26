@@ -11,7 +11,7 @@ public struct SettingsSheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
             // Header
             HStack {
                 Button(action: {
@@ -51,6 +51,9 @@ public struct SettingsSheet: View {
                 .buttonStyle(.plain)
                 .help("Close settings")
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
 
             Divider()
 
@@ -202,26 +205,61 @@ public struct SettingsSheet: View {
                         )
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             Divider()
 
             // Footer / Actions
-            HStack {
+            HStack(spacing: 8) {
                 Text("AGYTokenTracker v1.0.0")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
+                Text("•")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary.opacity(0.4))
+
+                Button(action: {
+                    if let url = URL(string: "https://github.com/rsimenok/agy-token-traker") {
+                        NSWorkspace.shared.open(url)
+                        dismissWindow()
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 9))
+                        Text("GitHub")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Open GitHub Repository")
+
                 Spacer()
 
-                Button("Quit App", role: .destructive) {
+                Button(action: {
                     NSApplication.shared.terminate(nil)
+                }) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
-                .font(.system(size: 11))
+                .buttonStyle(.plain)
+                .help("Quit App")
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func dismissWindow() {
+        (NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }))?.close()
+        NSApp.deactivate()
     }
 }
 
@@ -283,6 +321,8 @@ public struct SurfaceStatusRow: View {
             if exists {
                 Button(action: {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+                    (NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }))?.close()
+                    NSApp.deactivate()
                 }) {
                     Image(systemName: "folder")
                         .font(.system(size: 11))

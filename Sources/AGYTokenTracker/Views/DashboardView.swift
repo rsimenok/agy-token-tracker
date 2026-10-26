@@ -177,12 +177,15 @@ public struct DashboardView: View {
 
                 Spacer()
 
-                Button("Quit") {
+                Button(action: {
                     NSApplication.shared.terminate(nil)
+                }) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
-                .font(.system(size: 11))
                 .buttonStyle(.plain)
-                .foregroundColor(.secondary)
+                .help("Quit App")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
