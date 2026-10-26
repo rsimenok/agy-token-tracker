@@ -27,6 +27,7 @@ public struct SettingsSheet: View {
                     .foregroundColor(.accentColor)
                 }
                 .buttonStyle(.plain)
+                .frame(width: 50, alignment: .leading)
 
                 Spacer()
 
@@ -40,16 +41,9 @@ public struct SettingsSheet: View {
 
                 Spacer()
 
-                Button(action: {
-                    tracker.isShowingSettings = false
-                    onClose()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Close settings")
+                // Balance the Back button so title remains perfectly centered
+                Color.clear
+                    .frame(width: 50, height: 1)
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
