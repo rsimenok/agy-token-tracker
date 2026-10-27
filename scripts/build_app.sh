@@ -36,9 +36,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -53,5 +53,20 @@ EOF
 echo -n "APPL????" > "${CONTENTS_DIR}/PkgInfo"
 
 echo "✅ App bundle created successfully at ${BUNDLE_DIR}!"
+
+echo "📀 Creating DMG installer at build/${APP_NAME}.dmg..."
+DMG_TEMP_DIR="build/dmg_temp"
+rm -rf "${DMG_TEMP_DIR}" "build/${APP_NAME}.dmg"
+mkdir -p "${DMG_TEMP_DIR}"
+cp -r "${BUNDLE_DIR}" "${DMG_TEMP_DIR}/"
+ln -s /Applications "${DMG_TEMP_DIR}/Applications"
+hdiutil create -volname "AGY Token Tracker" -srcfolder "${DMG_TEMP_DIR}" -ov -format UDZO "build/${APP_NAME}.dmg"
+rm -rf "${DMG_TEMP_DIR}"
+
+echo "🗜️ Creating ZIP archives..."
+(cd build && rm -f "${APP_NAME}.zip" "${APP_NAME}-v1.0.1.zip" "${APP_NAME}.app.zip" && zip -rq "${APP_NAME}.zip" "${APP_NAME}.app" && cp "${APP_NAME}.zip" "${APP_NAME}-v1.0.1.zip" && cp "${APP_NAME}.zip" "${APP_NAME}.app.zip")
+
+echo "🎉 All release artifacts created in build/:"
+ls -lh build/*.dmg build/*.zip
 echo "👉 You can run it now with: open ${BUNDLE_DIR}"
 echo "👉 Or copy to Applications: cp -r ${BUNDLE_DIR} /Applications/"

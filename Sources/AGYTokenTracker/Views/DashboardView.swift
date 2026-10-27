@@ -134,14 +134,18 @@ public struct DashboardView: View {
                 .labelsHidden()
 
                 // 3. Period Selector (Today | Yesterday | This Week | This Month | All Time)
-                Picker("Period", selection: $tracker.selectedPeriod) {
-                    ForEach(TimePeriod.allCases) { period in
-                        Text(period.rawValue).tag(period)
+                if tracker.currentView != .history {
+                    Picker("Period", selection: $tracker.selectedPeriod) {
+                        ForEach(TimePeriod.allCases) { period in
+                            Text(period.rawValue).tag(period)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
             }
+            .animation(.easeInOut(duration: 0.16), value: tracker.currentView)
             .padding(.horizontal, 14)
             .padding(.top, 10)
             .padding(.bottom, 6)
@@ -159,6 +163,9 @@ public struct DashboardView: View {
                 case .sessions:
                     SessionsListView(tracker: tracker)
                         .padding(.top, 8)
+                case .history:
+                    HistoryView(tracker: tracker)
+                        .padding(.top, 4)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -493,21 +500,28 @@ public struct SurfaceBreakdownView: View {
         HStack(spacing: 6) {
             ForEach(surfaces) { surface in
                 let metrics = tracker.surfaceMetrics(for: surface)
+
                 Button(action: {
                     tracker.selectedSurface = surface
                 }) {
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(surface.badgeColor)
-                                .frame(width: 6, height: 6)
-                            Text(surface.shortLabel)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.primary)
-                            Spacer()
+                        HStack(spacing: 5) {
                             Image(systemName: surface.iconName)
-                                .font(.system(size: 9))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(surface.badgeColor)
+                                .frame(width: 14, height: 14)
+                                .background(surface.badgeColor.opacity(0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+
+                            Text(surface.shortLabel)
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            Spacer()
+
+                            Text("\(metrics.sessionsCount) ses")
+                                .font(.system(size: 8.5, weight: .medium))
+                                .foregroundColor(.secondary)
                         }
 
                         Text(TrackerViewModel.formatCompact(metrics.tokens))
@@ -518,10 +532,8 @@ public struct SurfaceBreakdownView: View {
                             Text(TrackerViewModel.formatCurrency(metrics.cost))
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                                 .foregroundColor(.green)
+
                             Spacer()
-                            Text("\(metrics.sessionsCount) ses")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(8)

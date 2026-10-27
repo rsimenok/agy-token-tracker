@@ -424,6 +424,148 @@ struct AGYTokenTrackerTests {
         #expect(abs(updatedLatest.timeIntervalSince(futureDate)) < 1.0)
     }
 
+    @Test("MonthlyRecord calculations and surface metrics")
+    func testMonthlyRecordCalculations() {
+        let record = MonthlyRecord(
+            year: 2026,
+            month: 10,
+            inputTokens: 1000,
+            cacheReadTokens: 3000,
+            outputTokens: 500,
+            totalTokens: 4500,
+            totalCost: 1.25,
+            sessionCount: 4,
+            stepCount: 12,
+            modelBreakdown: [
+                "gemini-3.8-flash": ModelMonthlyStat(displayName: "Gemini 3.8 Flash", canonicalModelId: "gemini-3.8-flash", tokens: 4500, cost: 1.25)
+            ],
+            surfaceBreakdown: [
+                AppSurface.desktop.rawValue: SurfaceMonthlyStat(tokens: 3000, cost: 0.85, sessions: 3),
+                AppSurface.cli.rawValue: SurfaceMonthlyStat(tokens: 1500, cost: 0.40, sessions: 1)
+            ]
+        )
+
+        #expect(record.id == "2026-10")
+        #expect(abs(record.cacheHitRatio - 0.75) < 0.001)
+
+        let allMetrics = record.metrics(for: .all)
+        #expect(allMetrics.tokens == 4500)
+        #expect(abs(allMetrics.cost - 1.25) < 0.001)
+        #expect(allMetrics.sessions == 4)
+
+        let desktopMetrics = record.metrics(for: .desktop)
+        #expect(desktopMetrics.tokens == 3000)
+        #expect(abs(desktopMetrics.cost - 0.85) < 0.001)
+        #expect(desktopMetrics.sessions == 3)
+
+        let ideMetrics = record.metrics(for: .ide)
+        #expect(ideMetrics.tokens == 0)
+        #expect(ideMetrics.cost == 0.0)
+        #expect(ideMetrics.sessions == 0)
+    }
+
+    @Test("HistoryStore aggregation, persistence, and reload")
+    func testHistoryStorePersistenceAndAggregation() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFile = tempDir.appendingPathComponent("test_history_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        let store = HistoryStore(customFileURL: tempFile)
+
+        let calendar = Calendar.current
+        var comps1 = DateComponents()
+        comps1.year = 2026
+        comps1.month = 9
+        comps1.day = 15
+        let sepDate = calendar.date(from: comps1)!
+
+        var comps2 = DateComponents()
+        comps2.year = 2026
+        comps2.month = 10
+        comps2.day = 5
+        let octDate = calendar.date(from: comps2)!
+
+        let steps: [TokenStep] = [
+            TokenStep(
+                stepIndex: 1,
+                sessionId: "session-sep",
+                date: sepDate,
+                inputTokens: 1000,
+                cacheReadTokens: 1000,
+                outputTokens: 200,
+                cost: 0.10,
+                modelName: "gemini-3.8-flash",
+                surface: .desktop
+            ),
+            TokenStep(
+                stepIndex: 1,
+                sessionId: "session-oct-1",
+                date: octDate,
+                inputTokens: 2000,
+                cacheReadTokens: 4000,
+                outputTokens: 500,
+                cost: 0.25,
+                modelName: "gemini-3.8-flash",
+                surface: .desktop
+            ),
+            TokenStep(
+                stepIndex: 2,
+                sessionId: "session-oct-2",
+                date: octDate,
+                inputTokens: 500,
+                cacheReadTokens: 500,
+                outputTokens: 100,
+                cost: 0.05,
+                modelName: "claude-3-5-sonnet",
+                surface: .cli
+            )
+        ]
+
+        let updatedData = store.aggregateAndSave(steps: steps)
+        #expect(updatedData.records.count == 2)
+        #expect(store.availableYears.contains(2026))
+
+        let sepRecord = updatedData.records["2026-09"]
+        #expect(sepRecord != nil)
+        #expect(sepRecord?.totalTokens == 2200)
+        #expect(abs((sepRecord?.totalCost ?? 0) - 0.10) < 0.001)
+
+        let octRecord = updatedData.records["2026-10"]
+        #expect(octRecord != nil)
+        #expect(octRecord?.totalTokens == 7600)
+        #expect(abs((octRecord?.totalCost ?? 0) - 0.30) < 0.001)
+        #expect(octRecord?.sessionCount == 2)
+        #expect(octRecord?.surfaceBreakdown[AppSurface.desktop.rawValue]?.tokens == 6500)
+        #expect(octRecord?.surfaceBreakdown[AppSurface.cli.rawValue]?.tokens == 1100)
+
+        // Verify reloading from disk
+        let reloadedStore = HistoryStore(customFileURL: tempFile)
+        let reloadedData = reloadedStore.currentData
+        #expect(reloadedData.records.count == 2)
+        #expect(reloadedData.records["2026-10"]?.totalTokens == 7600)
+        #expect(reloadedStore.records(for: 2026).count == 2)
+
+        let annual = reloadedStore.annualMetrics(year: 2026, surface: .all)
+        #expect(annual.tokens == 9800)
+        #expect(abs(annual.cost - 0.40) < 0.001)
+        #expect(annual.activeMonths == 2)
+    }
+
+    @Test("AppViewTab includes History")
+    func testAppViewTabHistory() {
+        #expect(AppViewTab.history.rawValue == "History")
+        #expect(AppViewTab.allCases.contains(.history))
+    }
+
+    @Test("TrackerViewModel formatCompact with thousands, millions, billions, and trillions")
+    func testFormatCompactScales() {
+        #expect(TrackerViewModel.formatCompact(500) == "500")
+        #expect(TrackerViewModel.formatCompact(1_500) == "1.5k")
+        #expect(TrackerViewModel.formatCompact(25_000_000) == "25.00M")
+        #expect(TrackerViewModel.formatCompact(1_150_290_000) == "1.15B")
+        #expect(TrackerViewModel.formatCompact(2_450_000_000_000) == "2.45T")
+    }
+
     // MARK: - Protobuf Encoding Helpers for Tests
 
     private func encodeVarint(_ value: UInt64) -> Data {

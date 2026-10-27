@@ -23,8 +23,10 @@ Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthe
 | Overview (Tokens & Cost) | Models Analytics & Quotas |
 | :---: | :---: |
 | <img src="assets/dashboard.png" width="370" alt="Overview Dashboard" /> | <img src="assets/models.png" width="370" alt="Models Analytics & Quotas" /> |
-| **Sessions History** | **Settings & Preferences** |
-| <img src="assets/sessions.png" width="370" alt="Sessions History" /> | <img src="assets/settings.png" width="370" alt="Settings Sheet" /> |
+| **Annual & Monthly History** | **Sessions Log** |
+| <img src="assets/history.png" width="370" alt="Annual & Monthly History" /> | <img src="assets/sessions.png" width="370" alt="Sessions Log" /> |
+| **Settings & Preferences** | |
+| <img src="assets/settings.png" width="370" alt="Settings Sheet" /> | |
 
 ---
 
@@ -36,12 +38,10 @@ Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthe
 - **Antigravity CLI (`agy`)**: Scans console sessions and trajectory databases from `~/.gemini/antigravity-cli`.
 - **Antigravity IDE**: Parses IDE extensions and workspace conversations from `~/.gemini/antigravity-ide`.
 
-### ⏱️ Flexible Time Horizons
-- **Today**
-- **Yesterday**
-- **This Week**
-- **This Month**
-- **All Time**
+### ⏱️ Flexible Time Horizons & Historical Analytics
+- **Today**, **Yesterday**, **This Week**, **This Month**, **All Time**
+- 📅 **Annual & Monthly History**: Dedicated **History** tab featuring an annual year switcher (`< 2026 >`), annual hero summary, interactive monthly spending bar charts (Swift Charts), and granular month-by-month token and model breakdown cards.
+- 💾 **Persistent Aggregation**: Saves monthly aggregates locally (`~/Library/Application Support/AGYTokenTracker/monthly_history.json`) for instant zero-latency loads and permanent preservation even if old session files are later purged.
 
 ### 📊 Granular Token & Cache Accounting
 - 📥 **Input Tokens**: Fresh context and user prompts.
@@ -86,8 +86,8 @@ Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthe
 ### 1. Run in Development Mode
 Clone the repository and launch directly:
 ```bash
-git clone https://github.com/rsimenok/agy-token-traker.git
-cd agy-token-traker
+git clone https://github.com/rsimenok/agy-token-tracker.git
+cd agy-token-tracker
 swift run
 ```
 
@@ -150,7 +150,7 @@ Sources/AGYTokenTracker/
 ## 🤝 Contributing
 
 Contributions, issue reports, and feature suggestions are welcome!
-Feel free to open an issue or submit a Pull Request on [GitHub](https://github.com/rsimenok/agy-token-traker).
+Feel free to open an issue or submit a Pull Request on [GitHub](https://github.com/rsimenok/agy-token-tracker).
 
 ---
 

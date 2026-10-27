@@ -208,7 +208,7 @@ public struct SettingsSheet: View {
 
             // Footer / Actions
             HStack(spacing: 8) {
-                Text("AGYTokenTracker v1.0.0")
+                Text(appVersionString)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
@@ -217,7 +217,7 @@ public struct SettingsSheet: View {
                     .foregroundColor(.secondary.opacity(0.4))
 
                 Button(action: {
-                    if let url = URL(string: "https://github.com/rsimenok/agy-token-traker") {
+                    if let url = URL(string: "https://github.com/rsimenok/agy-token-tracker") {
                         NSWorkspace.shared.open(url)
                         dismissWindow()
                     }
@@ -249,6 +249,13 @@ public struct SettingsSheet: View {
             .padding(.vertical, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var appVersionString: String {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            return "AGYTokenTracker v\(version)"
+        }
+        return "AGYTokenTracker"
     }
 
     private func dismissWindow() {

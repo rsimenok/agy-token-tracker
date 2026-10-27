@@ -15,6 +15,7 @@ public enum AppViewTab: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case models = "Models"
     case sessions = "Sessions"
+    case history = "History"
 
     public var id: String { rawValue }
 }
@@ -95,6 +96,9 @@ public final class TrackerViewModel: ObservableObject {
     @Published public var isFetchingQuota: Bool = false
     @Published public var isShowingSettings: Bool = false
 
+    @Published public var historyData: MonthlyHistoryData = HistoryStore.shared.currentData
+    @Published public var selectedHistoryYear: Int = Calendar.current.component(.year, from: Date())
+
     @Published public private(set) var currentMetrics = ComputedMetrics()
     @Published public private(set) var filteredSessions: [SessionSummary] = []
     @Published public private(set) var modelUsages: [ModelUsage] = []
@@ -131,6 +135,9 @@ public final class TrackerViewModel: ObservableObject {
         self.customBrainPath = UserDefaults.standard.string(forKey: "agy_custom_brain_path") ?? UserDefaults.standard.string(forKey: "agv_custom_brain_path") ?? ""
         self.pricingSyncDate = pricing.lastSyncDate
         self.quotaSnapshot = quotaService.currentSnapshot
+        if let latestYear = HistoryStore.shared.availableYears.first {
+            self.selectedHistoryYear = latestYear
+        }
 
         guard startBackgroundServices else { return }
 
@@ -229,9 +236,11 @@ public final class TrackerViewModel: ObservableObject {
 
         Task.detached(priority: .userInitiated) { [unifiedScanner] in
             let (steps, sessions) = unifiedScanner.scanAllSurfaces(customDesktopBrainPath: customPath)
+            let updatedHistory = HistoryStore.shared.aggregateAndSave(steps: steps)
             await MainActor.run {
                 self.allSteps = steps
                 self.allSessions = sessions
+                self.historyData = updatedHistory
                 self.lastRefreshDate = Date()
                 self.recomputeMetrics()
                 self.isScanning = false
@@ -458,6 +467,26 @@ public final class TrackerViewModel: ObservableObject {
         breakdownMap[surface] ?? (0, 0.0, 0)
     }
 
+    // MARK: - History Accessors
+
+    public var availableHistoryYears: [Int] {
+        let years = Set(historyData.records.values.map(\.year))
+        if years.isEmpty {
+            return [Calendar.current.component(.year, from: Date())]
+        }
+        return years.sorted(by: >)
+    }
+
+    public func historyRecords(for year: Int) -> [MonthlyRecord] {
+        historyData.records.values
+            .filter { $0.year == year }
+            .sorted { $0.month > $1.month }
+    }
+
+    public func annualHistoryMetrics(for year: Int) -> (tokens: Int, cost: Double, sessions: Int, activeMonths: Int, cacheHitRatio: Double) {
+        HistoryStore.shared.annualMetrics(year: year, surface: selectedSurface)
+    }
+
     public var menuBarTitle: String {
         switch displayMode {
         case .tokens:
@@ -471,15 +500,19 @@ public final class TrackerViewModel: ObservableObject {
 
     // MARK: - Formatters
 
-    public static func formatNumber(_ num: Int) -> String {
+    nonisolated public static func formatNumber(_ num: Int) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: num)) ?? "\(num)"
     }
 
-    public static func formatCompact(_ num: Int) -> String {
+    nonisolated public static func formatCompact(_ num: Int) -> String {
         let d = Double(num)
-        if d >= 1_000_000 {
+        if d >= 1_000_000_000_000 {
+            return String(format: "%.2fT", d / 1_000_000_000_000)
+        } else if d >= 1_000_000_000 {
+            return String(format: "%.2fB", d / 1_000_000_000)
+        } else if d >= 1_000_000 {
             return String(format: "%.2fM", d / 1_000_000)
         } else if d >= 1_000 {
             return String(format: "%.1fk", d / 1_000)
@@ -488,7 +521,7 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
-    public static func formatCurrency(_ amount: Double) -> String {
+    nonisolated public static func formatCurrency(_ amount: Double) -> String {
         if amount == 0 {
             return "$0.00"
         } else if amount < 0.01 {

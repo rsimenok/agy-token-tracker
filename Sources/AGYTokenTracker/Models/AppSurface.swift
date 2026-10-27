@@ -21,9 +21,9 @@ public enum AppSurface: String, CaseIterable, Identifiable, Sendable {
     public var badgeColor: Color {
         switch self {
         case .all: return .primary
-        case .desktop: return .blue
-        case .cli: return .orange
-        case .ide: return .purple
+        case .desktop: return .cyan
+        case .cli: return .yellow
+        case .ide: return .pink
         }
     }
 
