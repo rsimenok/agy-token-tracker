@@ -72,7 +72,6 @@ Built entirely with **SwiftUI** and **AppKit** with a modern Liquid Glass aesthe
 ### ⚙️ Menu Bar Customization & Settings
 - **Status Bar Display Options**: Show estimated Cost (`$0.24`), Token count (`125k`), combined, or Icon only.
 - **Path Health Indicators**: Live status indicators for all monitored directories with direct "Reveal in Finder" actions.
-- **Custom Path Overrides**: Option to configure a custom Antigravity `brain` directory.
 - **Manual Pricing Sync**: One-click update for LiteLLM tariff rates.
 
 ---

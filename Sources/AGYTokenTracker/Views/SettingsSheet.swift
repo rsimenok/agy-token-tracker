@@ -112,10 +112,8 @@ public struct SettingsSheet: View {
                         VStack(spacing: 6) {
                             SurfaceStatusRow(
                                 surface: .desktop,
-                                path: tracker.customBrainPath.isEmpty ? "~/.gemini/antigravity/brain" : tracker.customBrainPath,
-                                url: TranscriptScanner.shared.resolveBrainDirectory(
-                                    customPath: tracker.customBrainPath.isEmpty ? nil : tracker.customBrainPath
-                                )
+                                path: "~/.gemini/antigravity/brain",
+                                url: TranscriptScanner.shared.resolveBrainDirectory()
                             )
 
                             SurfaceStatusRow(
@@ -130,32 +128,6 @@ public struct SettingsSheet: View {
                                 url: AppSurface.ide.defaultDirectoryURL
                             )
                         }
-
-                        // Custom 2.0 path input
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Custom Antigravity 2.0 brain directory (optional):")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-
-                            HStack {
-                                TextField(
-                                    "Default: ~/.gemini/antigravity/brain",
-                                    text: $tracker.customBrainPath
-                                )
-                                .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 10, design: .monospaced))
-
-                                if !tracker.customBrainPath.isEmpty {
-                                    Button("Reset") {
-                                        tracker.customBrainPath = ""
-                                        tracker.startWatcher()
-                                        tracker.refresh()
-                                    }
-                                    .font(.system(size: 10))
-                                }
-                            }
-                        }
-                        .padding(.top, 2)
                     }
 
                     // 3. Pricing Engine

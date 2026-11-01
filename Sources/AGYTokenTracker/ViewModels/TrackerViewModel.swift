@@ -69,12 +69,6 @@ public final class TrackerViewModel: ObservableObject {
         }
     }
 
-    @Published public var customBrainPath: String = "" {
-        didSet {
-            UserDefaults.standard.set(customBrainPath, forKey: "agy_custom_brain_path")
-        }
-    }
-
     @Published public var currentView: AppViewTab = .overview
     public var selectedTab: DashboardTab {
         get { currentView }
@@ -132,7 +126,6 @@ public final class TrackerViewModel: ObservableObject {
             self.displayMode = mode
         }
 
-        self.customBrainPath = UserDefaults.standard.string(forKey: "agy_custom_brain_path") ?? UserDefaults.standard.string(forKey: "agv_custom_brain_path") ?? ""
         self.pricingSyncDate = pricing.lastSyncDate
         self.quotaSnapshot = quotaService.currentSnapshot
         if let latestYear = HistoryStore.shared.availableYears.first {
@@ -198,17 +191,13 @@ public final class TrackerViewModel: ObservableObject {
     }
 
     public func startWatcher() {
-        var watchDirs: [URL] = [
+        let watchDirs: [URL] = [
             AppSurface.desktop.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
             AppSurface.cli.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
             AppSurface.cli.defaultDirectoryURL.appendingPathComponent("conversations", isDirectory: true),
             AppSurface.ide.defaultDirectoryURL.appendingPathComponent("brain", isDirectory: true),
             AppSurface.ide.defaultDirectoryURL.appendingPathComponent("conversations", isDirectory: true)
         ]
-
-        if !customBrainPath.isEmpty {
-            watchDirs.append(URL(fileURLWithPath: (customBrainPath as NSString).expandingTildeInPath))
-        }
 
         watcher.start(watching: watchDirs) { [weak self] in
             Task { @MainActor [weak self] in
@@ -232,10 +221,9 @@ public final class TrackerViewModel: ObservableObject {
         }
         isScanning = true
         pendingRefresh = false
-        let customPath = customBrainPath.isEmpty ? nil : customBrainPath
 
         Task.detached(priority: .userInitiated) { [unifiedScanner] in
-            let (steps, sessions) = unifiedScanner.scanAllSurfaces(customDesktopBrainPath: customPath)
+            let (steps, sessions) = unifiedScanner.scanAllSurfaces()
             let updatedHistory = HistoryStore.shared.aggregateAndSave(steps: steps)
             await MainActor.run {
                 self.allSteps = steps

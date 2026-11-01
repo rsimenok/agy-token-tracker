@@ -8,7 +8,7 @@ public final class UnifiedScanner: Sendable {
 
     public init() {}
 
-    public func scanAllSurfaces(customDesktopBrainPath: String? = nil) -> (steps: [TokenStep], sessions: [SessionSummary]) {
+    public func scanAllSurfaces() -> (steps: [TokenStep], sessions: [SessionSummary]) {
         var allSteps: [TokenStep] = []
         var allSessions: [SessionSummary] = []
         var seenSessionKeys = Set<String>()
@@ -16,7 +16,7 @@ public final class UnifiedScanner: Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser
 
         // 1. Antigravity 2.0 (Desktop)
-        let desktopBrainURL = transcriptScanner.resolveBrainDirectory(customPath: customDesktopBrainPath)
+        let desktopBrainURL = transcriptScanner.resolveBrainDirectory()
         let (desktopSteps, desktopSessions) = transcriptScanner.scanAll(brainURL: desktopBrainURL, surface: .desktop)
         for s in desktopSessions {
             seenSessionKeys.insert("desktop:\(s.sessionId)")
