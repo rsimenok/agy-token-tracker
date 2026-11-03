@@ -2,7 +2,7 @@
 
 [![macOS 14.0+](https://img.shields.io/badge/macOS-14.0%2B-blue.svg)](https://apple.com)
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 **AGY Token Tracker** is a lightweight, native macOS menu bar application designed to monitor token usage, prompt caching efficiency, real-time expenses, and rate limit quotas across the entire **Google Antigravity** ecosystem:
 
@@ -155,4 +155,4 @@ Feel free to open an issue or submit a Pull Request on [GitHub](https://github.c
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [Apache 2.0 License](LICENSE). See the [NOTICE](NOTICE) file for attribution details.
