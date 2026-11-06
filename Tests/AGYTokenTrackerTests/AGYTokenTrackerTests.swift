@@ -288,6 +288,11 @@ struct AGYTokenTrackerTests {
         #expect(claudeGroup.matches(modelName: "Claude 3.5 Haiku"))
         #expect(claudeGroup.matches(modelName: "GPT-4o"))
         #expect(!claudeGroup.matches(modelName: "Gemini 3.8 Flash"))
+
+        let argonWk = QuotaBucket(id: "argon-weekly", name: "Weekly Limit Remaining", window: "weekly", remainingFraction: 1.0)
+        let argonGroup = QuotaGroup(name: "Gemini 4 Argon", buckets: [argonWk])
+        #expect(argonGroup.fiveHourBucket == nil)
+        #expect(argonGroup.weeklyBucket?.id == "argon-weekly")
     }
 
     @Test("QuotaService JSON parsing from agy usage output")

@@ -13,6 +13,7 @@ struct AGYTokenTrackerApp: App {
     var body: some Scene {
         MenuBarExtra {
             DashboardView(tracker: tracker)
+                .focusEffectDisabled()
         } label: {
             StatusItemLabel(tracker: tracker)
         }

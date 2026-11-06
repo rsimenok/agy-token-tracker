@@ -86,15 +86,17 @@ public struct ModelUsageRowView: View {
                 }
 
                 // Quota & Limits Indicator (if available)
-                if let fiveHour = model.fiveHourQuota {
+                if model.fiveHourQuota != nil || model.weeklyQuota != nil {
                     HStack(spacing: 6) {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(fiveHour.gaugeColor)
-                                .frame(width: 5, height: 5)
-                            Text("5h: \(Int(fiveHour.remainingPercent.rounded()))% left")
-                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                .foregroundColor(fiveHour.gaugeColor)
+                        if let fiveHour = model.fiveHourQuota {
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(fiveHour.gaugeColor)
+                                    .frame(width: 5, height: 5)
+                                Text("5h: \(Int(fiveHour.remainingPercent.rounded()))% left")
+                                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                                    .foregroundColor(fiveHour.gaugeColor)
+                            }
                         }
 
                         if let weekly = model.weeklyQuota {
@@ -110,8 +112,9 @@ public struct ModelUsageRowView: View {
 
                         Spacer()
 
-                        if !fiveHour.resetCountdownText.isEmpty {
-                            Text(fiveHour.resetCountdownText)
+                        let countdown = model.fiveHourQuota?.resetCountdownText ?? model.weeklyQuota?.resetCountdownText ?? ""
+                        if !countdown.isEmpty {
+                            Text(countdown)
                                 .font(.system(size: 8))
                                 .foregroundColor(.secondary)
                         }

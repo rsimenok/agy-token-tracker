@@ -29,12 +29,19 @@ public struct DashboardView: View {
             }
         }
         .frame(width: 380, height: 620)
+        .background(FocusRingCleaner())
+        .focusEffectDisabled()
         .animation(.easeInOut(duration: 0.18), value: tracker.isShowingSettings)
         .onAppear {
             tracker.handleWindowOpened()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
             tracker.handleWindowOpened()
+            if let window = notification.object as? NSWindow {
+                DispatchQueue.main.async {
+                    FocusRingCleanerHelper.cleanFocusRings(in: window)
+                }
+            }
         }
     }
 
@@ -86,6 +93,7 @@ public struct DashboardView: View {
                         .foregroundColor(.primary)
                     }
                     .buttonStyle(.plain)
+                    .focusable(false)
                     .help("Toggle menu bar title between Tokens and Cost")
 
                     if tracker.isScanning {
@@ -99,6 +107,7 @@ public struct DashboardView: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .focusable(false)
                         .help("Refresh now")
                     }
 
@@ -112,6 +121,7 @@ public struct DashboardView: View {
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .focusable(false)
                     .help("Settings")
                 }
 
@@ -123,6 +133,7 @@ public struct DashboardView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .focusable(false)
 
                 // 2. Surface Selector (All | 2.0 | CLI | IDE)
                 Picker("Surface", selection: $tracker.selectedSurface) {
@@ -132,6 +143,7 @@ public struct DashboardView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .focusable(false)
 
                 // 3. Period Selector (Today | Yesterday | This Week | This Month | All Time)
                 if tracker.currentView != .history {
@@ -142,6 +154,7 @@ public struct DashboardView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    .focusable(false)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
@@ -192,6 +205,7 @@ public struct DashboardView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .focusable(false)
                 .help("Quit App")
             }
             .padding(.horizontal, 14)
@@ -324,17 +338,34 @@ public struct ActiveQuotaSummaryView: View {
                                         .foregroundColor(.primary)
                                 }
 
-                                if let fiveH = group.fiveHourBucket {
+                                if let fiveH = group.fiveHourBucket, let wk = group.weeklyBucket {
                                     HStack(spacing: 3) {
                                         Text("5h: \(Int(fiveH.remainingPercent.rounded()))%")
                                             .font(.system(size: 9, weight: .semibold, design: .rounded))
                                             .foregroundColor(fiveH.gaugeColor)
 
-                                        if let wk = group.weeklyBucket {
-                                            Text("• Wk: \(Int(wk.remainingPercent.rounded()))%")
-                                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                                .foregroundColor(wk.gaugeColor)
-                                        }
+                                        Text("• Wk: \(Int(wk.remainingPercent.rounded()))%")
+                                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                                            .foregroundColor(wk.gaugeColor)
+                                    }
+                                } else if let fiveH = group.fiveHourBucket {
+                                    HStack(spacing: 3) {
+                                        Text("5h: \(Int(fiveH.remainingPercent.rounded()))%")
+                                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                            .foregroundColor(fiveH.gaugeColor)
+                                    }
+                                } else if let wk = group.weeklyBucket {
+                                    HStack(spacing: 3) {
+                                        Text("Wk: \(Int(wk.remainingPercent.rounded()))%")
+                                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                            .foregroundColor(wk.gaugeColor)
+                                    }
+                                } else if let first = group.buckets.first {
+                                    HStack(spacing: 3) {
+                                        let prefix = first.window.isEmpty ? "" : "\(first.window): "
+                                        Text("\(prefix)\(Int(first.remainingPercent.rounded()))%")
+                                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                            .foregroundColor(first.gaugeColor)
                                     }
                                 }
                             }
